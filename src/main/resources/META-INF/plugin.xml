@@ -1,0 +1,48 @@
+<idea-plugin>
+    <id>com.coinex.plugin</id>
+    <name>CoinexPlugin</name>
+    <version>1.0</version>
+    <vendor>Coinex</vendor>
+    <description>Provide more convenient help for your development work, more help:
+        https://app.clickup.com/9008230771/v/dc/8cexcbk-190598
+    </description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <postStartupActivity implementation="com.coinex.plugin.CoinExStartupActivity"/>
+    </extensions>
+
+    <actions>
+        <group id="com.coinex.plugin.CoinExToolsGroup"
+               text="CoinExTools"
+               popup="true"
+               description="CoinExTools 功能菜单">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </group>
+
+        <action id="com.coinex.plugin.CreatePRAction"
+                class="com.coinex.plugin.CreatePRAction"
+                text="创建Pull Requests"
+                description="创建Pull Requests">
+            <add-to-group group-id="com.coinex.plugin.CoinExToolsGroup" anchor="first"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="alt P"/>
+        </action>
+
+        <action id="com.coinex.plugin.WorkflowAction"
+                class="com.coinex.plugin.WorkflowAction"
+                text="跳转workflow"
+                description="跳转到 workflow">
+            <add-to-group group-id="com.coinex.plugin.CoinExToolsGroup" anchor="last"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="alt O"/>
+        </action>
+
+        <action id="com.coinex.plugin.ConfigAction"
+                class="com.coinex.plugin.ConfigAction"
+                text="配置"
+                description="插件相关配置">
+            <add-to-group group-id="com.coinex.plugin.CoinExToolsGroup" anchor="last"/>
+        </action>
+
+    </actions>
+</idea-plugin> 
