@@ -1,9 +1,6 @@
 package com.coinex.plugin
 
 import com.coinex.plugin.utils.*
-import com.intellij.ide.DataManager
-import com.intellij.openapi.actionSystem.ActionManager
-import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
@@ -554,7 +551,8 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
                     // rebase无冲突
                     SwingUtilities.invokeLater {
                         if (result.isUpToDate) {
-                            val yes = Utils.showConfirmDialog(project, message = "当前分支已经 up to date，是否push分支？")
+                            val yes =
+                                Utils.showConfirmDialog(project, message = "当前分支已经 up to date，是否push分支？")
                             if (yes) {
                                 pushSourceBranch(source)
                             }
@@ -587,12 +585,16 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
 
         fun doShowGitResolveConflictsDialog() {
             Utils.showCommit(project)
-            showGitResolveConflictsDialog()
+            Utils.showGitResolveConflictsDialog(project)
         }
 
         if (refresh) {
             runProgressTask("刷新git文件变更...", {
                 VcsDirtyScopeManager.getInstance(project).markEverythingDirty()
+
+                SwingUtilities.invokeAndWait {
+                    Messages.showWarningDialog(project, "rebase存在冲突，请手动处理代码冲突", "")
+                }
 
                 ChangeListManager.getInstance(project).invokeAfterUpdate(false, {
                     SwingUtilities.invokeLater {
@@ -607,34 +609,6 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
         }
     }
 
-    fun showGitResolveConflictsDialog() {
-        try {
-            val conflictAction = ActionManager.getInstance().getAction("Git.ResolveConflicts")
-            if (conflictAction == null) {
-                BalloonUtils.showBalloonCenter(project, "无法找到 Git.ResolveConflicts Action")
-                return
-            }
-
-            DataManager.getInstance().dataContextFromFocusAsync.onSuccess { dataContext ->
-                SwingUtilities.invokeLater {
-                    try {
-                        val event = AnActionEvent.createFromAnAction(
-                            conflictAction,
-                            null,
-                            "fromPlugin",
-                            dataContext
-                        )
-                        conflictAction.actionPerformed(event)
-                    } catch (e: Exception) {
-                        BalloonUtils.showBalloonCenter(project, "执行 Git.ResolveConflicts 失败: ${e.message}")
-                    }
-                }
-            }.onError { error ->
-                BalloonUtils.showBalloonCenter(project, "执行 Git.ResolveConflicts 异常: ${error.message}")
-            }
-        } catch (e: Exception) {
-        }
-    }
 
     private fun onSourceBranchPushClick() {
         if (!srcBranchPushLabel.isClickable()) {
