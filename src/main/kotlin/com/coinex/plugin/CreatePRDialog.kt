@@ -108,6 +108,18 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
         setCancelButtonText("取消")
         setOKButtonText("创建")
         isResizable = false
+
+        window.addWindowListener(object : java.awt.event.WindowAdapter() {
+            override fun windowActivated(e: java.awt.event.WindowEvent?) {
+                // Dialog 被激活（获得焦点或切回窗口）
+                refreshSourceBranchSelected(false)
+                refreshTargetBranchSelected(false)
+            }
+
+            override fun windowDeactivated(e: java.awt.event.WindowEvent?) {
+                // Dialog 被取消激活
+            }
+        })
     }
 
 
@@ -197,14 +209,14 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
             .addComponent(JPanel().createRowSpacing())
             .addComponent(JPanel().createRowSpacing())
             .addLabeledComponent(JBLabel().createTitle("源分支："), wrapperComponent(selectSourceBranchCB), 1, false)
-            .addComponentToRightColumn(srcBranchRebaseLabel, 1) // 新增 rebase label
+            .addComponentToRightColumn(srcBranchRebaseLabel, 1)
             .addComponentToRightColumn(srcBranchPushLabel, 1)
             .addComponentToRightColumn(srcBranchCodeAnalysisLabel, 1)
-            .addComponentToRightColumn(srcBranchNameCheckLabel, 1) // 新增
+            .addComponentToRightColumn(srcBranchNameCheckLabel, 1)
             .addComponent(JPanel().createRowSpacing())
             .addLabeledComponent(JBLabel().createTitle("目的分支："), wrapperComponent(selectTargetBranchCB), 1, false)
             .addComponentToRightColumn(targetBranchNameCheckLabel, 1)
-            .addComponentToRightColumn(tarBranchPushLabel, 1) // 新增
+            .addComponentToRightColumn(tarBranchPushLabel, 1)
             .addComponentFillVertically(JPanel(), 0)
         val dialogPanel = formBuilder.panel
 
@@ -269,7 +281,7 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
             }
 
 
-        } else if (GitUtils.needRebase(project, source, target)) {
+        } else if (isBranchHasRemoteBranch(source) && GitUtils.needRebase(project, source, target)) {
             srcBranchRebaseLabel.clickType = CLICK_REBASE_SRC_ON_TARGET
             srcBranchRebaseLabel.text = "⚠\uFE0F 源分支落后于目标分支，建议先 rebase。是否现在自动 rebase？"
 
@@ -317,15 +329,18 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
     }
 
     private fun refreshSourceBranchPushCheck() {
-        val sourceBranch = selectSourceBranch
-        if (GitUtils.isRebaseInProgress(project) || GitUtils.needRebase(project, sourceBranch, selectTargetBranch)) {
+        val source = selectSourceBranch
+        val target = selectTargetBranch
+        if (GitUtils.isRebaseInProgress(project)
+            || (isBranchHasRemoteBranch(source) && GitUtils.needRebase(project, source, target))
+        ) {
             srcBranchPushLabel.text = ""
             srcBranchPushLabel.setVisibleIfTextValid()
             return
         }
 
-        val hasRemote = isBranchHasRemoteBranch(sourceBranch)
-        val unPushedCount = GitUtils.getUnPushedCommitCount(project, hasRemote, sourceBranch)
+        val hasRemote = isBranchHasRemoteBranch(source)
+        val unPushedCount = GitUtils.getUnPushedCommitCount(project, hasRemote, source)
         val statusTip = StringBuilder()
         if (!hasRemote) {
             statusTip.append("❌ 该分支还没push，点此去push")
@@ -480,7 +495,7 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
                 if (!result.isSuccess) {
                     if (result.hasConflict) {
                         SwingUtilities.invokeLater {
-                            BalloonUtils.showBalloonCenter(project, "存在冲突，请先处理冲突")
+                            BalloonUtils.showBalloonTop(project, "rebase出现冲突，请处理冲突", 5000)
                         }
                         jumpConflictResolve(true)
                     } else {
@@ -545,6 +560,7 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
                 } else if (result.hasConflict) {
                     // rebase出现冲突
                     SwingUtilities.invokeLater {
+                        BalloonUtils.showBalloonTop(project, "rebase出现冲突，请处理冲突", 5000)
                         jumpConflictResolve(true)
                     }
                 } else {
@@ -563,7 +579,6 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
     private fun jumpConflictResolve(refresh: Boolean = false) {
 
         fun doShowGitResolveConflictsDialog() {
-            close(0)
             Utils.showCommit(project)
             showGitResolveConflictsDialog()
         }
@@ -619,28 +634,55 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
             return
         }
         if (srcBranchPushLabel.clickType == CLICK_PUSH_SRC_BRANCH) {
-            val branchName = selectSourceBranch
-            val yes = Utils.showConfirmDialog(project, message = "确定push分支: $branchName")
+            val sourceBranch = selectSourceBranch
+            val yes = Utils.showConfirmDialog(project, message = "确定push分支: $sourceBranch")
             if (!yes) {
                 return
             }
             runProgressTask("Push分支") { indicator ->
                 if (indicator.isCanceled) return@runProgressTask
 
-                indicator.text = "正在push $branchName ..."
-                var pushResult = GitUtils.pushBranchWithCancel(project, branchName, indicator)
+                indicator.text = "正在push $sourceBranch ..."
+                var pushResult = GitUtils.pushBranchWithCancel(project, sourceBranch, indicator)
                 if (!pushResult.isSuccess && pushResult.isPushRejected) {
-                    // 弹窗询问，必须在UI线程
-                    var userConfirmed = false
+                    var userChoice = ConflictChoice.NONE
                     SwingUtilities.invokeAndWait {
-                        userConfirmed = Utils.showConfirmDialog(
-                            project,
-                            message = "push被rejected，若进行了rebase，是否使用 --force-with-lease 强推分支"
-                        )
+                        ConflictResolveDialog(project)
+                            .setConflictChoice {
+                                userChoice = it
+                            }
+                            .show()
                     }
-                    if (userConfirmed) {
-                        indicator.text = "正在force push $branchName ..."
-                        pushResult = GitUtils.pushBranchForceWithLease(project, branchName)
+
+                    when (userChoice) {
+                        ConflictChoice.REBASE -> {
+                            indicator.text = "正在rebase远程分支..."
+                            val rebaseResult = GitUtils.rebaseCurrentOnToTargetBranch(project, "origin/$sourceBranch")
+                            val output = rebaseResult.output
+                            SwingUtilities.invokeLater {
+                                if (rebaseResult.isSuccess) {
+                                    // rebase无冲突
+                                    BalloonUtils.showBalloonCenter(
+                                        project, rootPane, "${sourceBranch} 分支 rebase 成功！"
+                                    )
+                                    branches.refreshLocalBranchList()
+                                    refreshSourceBranchSelected(false)
+                                } else if (rebaseResult.hasConflict) {
+                                    // rebase出现冲突
+                                    BalloonUtils.showBalloonTop(project, "rebase出现冲突，请处理冲突", 5000)
+                                    jumpConflictResolve(true)
+                                } else {
+                                    Messages.showErrorDialog(project, "rebase 失败: $output", "rebase 错误")
+                                }
+                            }
+                        }
+
+                        ConflictChoice.FORCE_PUSH -> {
+                            indicator.text = "正在force push $sourceBranch ..."
+                            pushResult = GitUtils.pushBranchForceWithLease(project, sourceBranch)
+                        }
+
+                        else -> {}
                     }
                 }
                 if (pushResult.isSuccess) {
@@ -649,14 +691,14 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
                         refreshSourceBranchSelected(false)
                     }
                 }
-                Log.d { "${branchName} Push结果：$pushResult" }
+                Log.d { "${sourceBranch} Push结果：$pushResult" }
 
                 if (indicator.isCanceled) return@runProgressTask
 
                 SwingUtilities.invokeLater {
                     if (indicator.isCanceled) return@invokeLater
                     val pushTip =
-                        if (pushResult.isSuccess) "${branchName}分支push成功" else "${branchName}分支push失败: ${pushResult.errMsg}"
+                        if (pushResult.isSuccess) "${sourceBranch}分支push成功" else "${sourceBranch}分支push失败: ${pushResult.errMsg}"
                     BalloonUtils.showBalloonCenter(project, rootPane, pushTip, 3500)
                 }
             }
@@ -822,6 +864,10 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
     }
 
     override fun doOKAction() {
+        if (true) {
+            ConflictResolveDialog(project).show()
+            return
+        }
         // push成功后再执行创建PR逻辑
         val prUrl = "${projectUrl}/compare/${selectTargetBranch}...${selectSourceBranch}"
         BrowserUtils.openInBrowser(prUrl)

@@ -259,9 +259,7 @@ object GitUtils {
                 reader.readText()
             }.trim()
             val result = GitCommandResult.success(process.exitValue(), output)
-            if (result.isSuccess) {
-                Log.e { "Git push result: $output" }
-            }
+            Log.e { "Git push result: $output" }
             return result
         } catch (e: Exception) {
             Log.e { "Git push failed: ${e.message}" }

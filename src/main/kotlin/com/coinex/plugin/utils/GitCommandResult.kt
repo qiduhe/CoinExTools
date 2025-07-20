@@ -24,7 +24,10 @@ class GitCommandResult private constructor(val exitValue: Int, val output: Strin
                 output
             }
         }
-
+    
+    override fun toString(): String {
+        return output
+    }
 
     companion object {
         fun fail(exitValue: Int = -1, output: String = ""): GitCommandResult {
@@ -34,7 +37,6 @@ class GitCommandResult private constructor(val exitValue: Int, val output: Strin
         fun success(exitValue: Int = -1, output: String = ""): GitCommandResult {
             return create(exitValue, output)
         }
-
         fun create(exitValue: Int, output: String): GitCommandResult {
             return GitCommandResult(exitValue, output)
         }
