@@ -10,6 +10,9 @@ class GitCommandResult private constructor(val exitValue: Int, val output: Strin
     val hasConflict: Boolean
         get() = output.contains("CONFLICT")
 
+    val isUpToDate: Boolean
+        get() = output.contains("is up to date")
+
     val errMsg: String
         get() = when {
             isPushRejected -> {
@@ -24,7 +27,7 @@ class GitCommandResult private constructor(val exitValue: Int, val output: Strin
                 output
             }
         }
-    
+
     override fun toString(): String {
         return output
     }

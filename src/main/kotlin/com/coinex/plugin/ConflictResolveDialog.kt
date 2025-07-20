@@ -19,7 +19,7 @@ private const val ROW_SPACE = 3
 private const val FONT_TITLE = 14F
 private const val FONT_NORMAL = 13F
 
-class ConflictResolveDialog(private val project: Project) : DialogWrapper(project) {
+class ConflictResolveDialog(project: Project, private val sourceBranch: String) : DialogWrapper(project) {
     private val rebaseButton = JButton("rebase分支")
     private val forcePushButton = JButton("强推分支")
 
@@ -51,7 +51,8 @@ class ConflictResolveDialog(private val project: Project) : DialogWrapper(projec
             close(OK_EXIT_CODE)
         }
 
-        val tipLabel = JBLabel("⚠\uFE0F 推送被 reject，远程分支和本地存在冲突，请根据你的情况选择对应的处理方式").apply {
+        val tipLabel = JBLabel().apply {
+            text = "⚠\uFE0F 推送被 reject，$sourceBranch 的远程分支和本地存在冲突，请根据你的情况进行处理"
             border = BorderFactory.createEmptyBorder(0, 0, 0, 0)
             horizontalAlignment = SwingConstants.LEFT
             font = font.deriveFont(Font.PLAIN, FONT_TITLE)
