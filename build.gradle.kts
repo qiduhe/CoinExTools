@@ -12,7 +12,7 @@ repositories {
 }
 
 intellij {
-    version.set("2023.3.3")
+    version.set("2023.2.1")
     type.set("IC") // IntelliJ Community 版，兼容 Android Studio
 }
 
@@ -34,5 +34,8 @@ tasks {
         changeNotes.set("""
           more help：https://app.clickup.com/9008230771/v/dc/8cexcbk-190598
         """.trimIndent())
+
+        sinceBuild.set("231")
+        untilBuild.set("999.*")
     }
 } 
