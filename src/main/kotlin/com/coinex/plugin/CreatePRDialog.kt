@@ -436,23 +436,16 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
             CLICK_INSTALL_CODE_ANALYSIS_SCRIPT -> {
                 if (!CodeAnalysisScriptHelper.isProjectHasCheckScript(project)) {
                     installScriptToProject {
-                        refreshSourceBranchSelected(false)
+                        SwingUtilities.invokeLater {
+                            refreshSourceBranchSelected(false)
+                            startCodeAnalysis()
+                        }
                     }
                 }
             }
 
             CLICK_CODE_ANALYSIS -> {
-                val command = CodeAnalysisScriptHelper.getCodeAnalysisScriptPath();
-                Utils.copyTextToClipboard(command)
-
-                val toolWindow = Utils.showTerminalWindow(project) ?: return
-                BalloonUtils.showBalloonCenter(
-                    project,
-                    toolWindow.component,
-                    "命令已复制到剪贴板，粘贴到 Terminal 回车即可运行",
-                    3500
-                )
-                close(0)
+                startCodeAnalysis()
             }
 
             CLICK_OPEN_VERSiON_CTRL -> {
@@ -462,6 +455,20 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
         }
 
 
+    }
+
+    private fun startCodeAnalysis() {
+        val command = CodeAnalysisScriptHelper.getCodeAnalysisScriptPath();
+        Utils.copyTextToClipboard(command)
+
+        val toolWindow = Utils.showTerminalWindow(project) ?: return
+        BalloonUtils.showBalloonCenter(
+            project,
+            toolWindow.component,
+            "命令已复制到剪贴板，粘贴到 Terminal 回车即可运行",
+            3500
+        )
+        close(0)
     }
 
     private fun onSourceBranchRebaseClick() {

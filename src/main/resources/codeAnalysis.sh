@@ -55,7 +55,8 @@ else
     echo "❌ 代码检测失败，请处理异常问题"
     echo "错误信息请看检测报告: "
     echo "    file://${LOG_FILE_FULL_PATH}"
-    echo ""
+    echo "以下为不符合代码规范的类"
+    sed -n '/> Task :runDetektCli/,/> Task :runDetektCli FAILED/ p' $LOG_FILE | sed 's/^/    /' | sed '1d;2d;$d' | sed '$d' | sed '$d'
 
     exit 1
 fi
