@@ -3,20 +3,20 @@ package com.coinex.plugin
 import com.coinex.plugin.utils.GitUtils
 
 object ProjectCodeHelper {
-    private const val COINEX_EXCHANGE_REPO_URL = "org-32882096@github.com:coinexcom/coinex_exchange_android.git"
+    private const val COINEX_EXCHANGE_REPO_IDENTITY = "coinex_exchange_android.git"
     private const val COINEX_EXCHANGE_PROJECT_BASE_URL = "https://github.com/coinexcom/coinex_exchange_android"
 
-    private const val COINEX_WALLET_REPO_URL = "org-32882096@github.com:coinexcom/coinex_wallet_android.git"
+    private const val COINEX_WALLET_REPO_IDENTITY = "coinex_wallet_android.git"
     private const val COINEX_WALLET_PROJECT_URL = "https://github.com/coinexcom/coinex_wallet_android"
 
     fun repoUrlToProjectUrl(rawRepoUrl: String?): String {
         val projectUrl = GitUtils.removeGitHubToken(rawRepoUrl)
-        return when (projectUrl) {
-            COINEX_EXCHANGE_REPO_URL -> {
+        return when  {
+            projectUrl.contains(COINEX_EXCHANGE_REPO_IDENTITY) -> {
                 COINEX_EXCHANGE_PROJECT_BASE_URL
             }
 
-            COINEX_WALLET_REPO_URL -> {
+            projectUrl.contains(COINEX_WALLET_REPO_IDENTITY)  -> {
                 COINEX_WALLET_PROJECT_URL
             }
 

@@ -858,6 +858,10 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
     override fun doOKAction() {
         // push成功后再执行创建PR逻辑
         val prUrl = "${projectUrl}/compare/${selectTargetBranch}...${selectSourceBranch}"
+        if (!BrowserUtils.isValidUrl(prUrl)) {
+            Messages.showErrorDialog(project, "链接错误，请检测 [项目地址] 是否正确，并可以跳转", "")
+            return
+        }
         BrowserUtils.openInBrowser(prUrl)
         super.doOKAction()
     }
