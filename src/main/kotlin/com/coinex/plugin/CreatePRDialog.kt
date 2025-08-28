@@ -637,7 +637,7 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
 
             indicator.text = "正在push $sourceBranch ..."
             // push网络需要开启warp
-            WarpUtils.runInWarp(project.basePath ?: "") {
+            WarpUtils.runInWarp {
                 var pushResult = GitUtils.pushBranchWithCancel(project, sourceBranch, indicator)
                 if (!pushResult.isSuccess && pushResult.isPushRejected) {
                     var userChoice = ConflictChoice.NONE
@@ -785,7 +785,7 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
 
                 indicator.text = "正在push $branchName ..."
                 // push网络需要开启warp
-                WarpUtils.runInWarp(project.basePath ?: "") {
+                WarpUtils.runInWarp {
                     val pushResult = GitUtils.pushBranchWithCancel(this.project, branchName, indicator)
                     Log.d { "${branchName} Push结果：$pushResult" }
                     if (indicator.isCanceled) return@runInWarp
