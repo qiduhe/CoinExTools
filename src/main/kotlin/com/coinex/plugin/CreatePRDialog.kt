@@ -636,63 +636,66 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
             if (indicator.isCanceled) return@runProgressTask
 
             indicator.text = "正在push $sourceBranch ..."
-            var pushResult = GitUtils.pushBranchWithCancel(project, sourceBranch, indicator)
-            if (!pushResult.isSuccess && pushResult.isPushRejected) {
-                var userChoice = ConflictChoice.NONE
-                SwingUtilities.invokeAndWait {
-                    ConflictResolveDialog(project, sourceBranch)
-                        .setConflictChoice {
-                            userChoice = it
-                        }
-                        .show()
-                }
+            // push网络需要开启warp
+            WarpUtils.runInWarp(project.basePath ?: "") {
+                var pushResult = GitUtils.pushBranchWithCancel(project, sourceBranch, indicator)
+                if (!pushResult.isSuccess && pushResult.isPushRejected) {
+                    var userChoice = ConflictChoice.NONE
+                    SwingUtilities.invokeAndWait {
+                        ConflictResolveDialog(project, sourceBranch)
+                            .setConflictChoice {
+                                userChoice = it
+                            }
+                            .show()
+                    }
 
-                when (userChoice) {
-                    ConflictChoice.REBASE -> {
-                        indicator.text = "正在rebase远程分支..."
-                        val rebaseResult = GitUtils.rebaseCurrentOnToTargetBranch(project, "origin/$sourceBranch")
-                        val output = rebaseResult.output
-                        SwingUtilities.invokeLater {
-                            if (rebaseResult.isSuccess) {
-                                // rebase无冲突
-                                BalloonUtils.showBalloonCenter(
-                                    project, rootPane, "${sourceBranch} 分支 rebase 成功！"
-                                )
-                                branches.refreshLocalBranchList()
-                                refreshSourceBranchSelected(false)
-                            } else if (rebaseResult.hasConflict) {
-                                // rebase出现冲突
-                                BalloonUtils.showBalloonTop(project, "rebase出现冲突，请处理冲突", 5000)
-                                jumpConflictResolve(true)
-                            } else {
-                                Messages.showErrorDialog(project, "rebase 失败: $output", "rebase 错误")
+                    when (userChoice) {
+                        ConflictChoice.REBASE -> {
+                            indicator.text = "正在rebase远程分支..."
+                            val rebaseResult = GitUtils.rebaseCurrentOnToTargetBranch(project, "origin/$sourceBranch")
+                            val output = rebaseResult.output
+                            SwingUtilities.invokeLater {
+                                if (rebaseResult.isSuccess) {
+                                    // rebase无冲突
+                                    BalloonUtils.showBalloonCenter(
+                                        project, rootPane, "${sourceBranch} 分支 rebase 成功！"
+                                    )
+                                    branches.refreshLocalBranchList()
+                                    refreshSourceBranchSelected(false)
+                                } else if (rebaseResult.hasConflict) {
+                                    // rebase出现冲突
+                                    BalloonUtils.showBalloonTop(project, "rebase出现冲突，请处理冲突", 5000)
+                                    jumpConflictResolve(true)
+                                } else {
+                                    Messages.showErrorDialog(project, "rebase 失败: $output", "rebase 错误")
+                                }
                             }
                         }
-                    }
 
-                    ConflictChoice.FORCE_PUSH -> {
-                        indicator.text = "正在force push $sourceBranch ..."
-                        pushResult = GitUtils.pushBranchForceWithLease(project, sourceBranch)
-                    }
+                        ConflictChoice.FORCE_PUSH -> {
+                            indicator.text = "正在force push $sourceBranch ..."
+                            pushResult = GitUtils.pushBranchForceWithLease(project, sourceBranch)
+                        }
 
-                    else -> {}
+                        else -> {}
+                    }
                 }
-            }
-            if (pushResult.isSuccess) {
+                if (pushResult.isSuccess) {
+                    SwingUtilities.invokeLater {
+                        branches.refreshRemoteBranchList()
+                        refreshSourceBranchSelected(false)
+                    }
+                }
+                Log.d { "${sourceBranch} Push结果：$pushResult" }
+
+                if (indicator.isCanceled) return@runInWarp
+
                 SwingUtilities.invokeLater {
-                    branches.refreshRemoteBranchList()
-                    refreshSourceBranchSelected(false)
+                    if (indicator.isCanceled) return@invokeLater
+                    val pushTip =
+                        if (pushResult.isSuccess) "${sourceBranch}分支push成功" else "${sourceBranch}分支push失败: ${pushResult.errMsg}"
+                    BalloonUtils.showBalloonCenter(project, rootPane, pushTip, 3500)
                 }
-            }
-            Log.d { "${sourceBranch} Push结果：$pushResult" }
-
-            if (indicator.isCanceled) return@runProgressTask
-
-            SwingUtilities.invokeLater {
-                if (indicator.isCanceled) return@invokeLater
-                val pushTip =
-                    if (pushResult.isSuccess) "${sourceBranch}分支push成功" else "${sourceBranch}分支push失败: ${pushResult.errMsg}"
-                BalloonUtils.showBalloonCenter(project, rootPane, pushTip, 3500)
             }
         }
     }
@@ -781,21 +784,22 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
                 }
 
                 indicator.text = "正在push $branchName ..."
-                val pushResult = GitUtils.pushBranchWithCancel(this.project, branchName, indicator)
-                Log.d { "${branchName} Push结果：$pushResult" }
-                if (indicator.isCanceled) return@runProgressTask
+                // push网络需要开启warp
+                WarpUtils.runInWarp(project.basePath ?: "") {
+                    val pushResult = GitUtils.pushBranchWithCancel(this.project, branchName, indicator)
+                    Log.d { "${branchName} Push结果：$pushResult" }
+                    if (indicator.isCanceled) return@runInWarp
 
-                SwingUtilities.invokeLater {
-                    if (pushResult.isSuccess) {
-                        branches.refreshRemoteBranchList()
-                        refreshTargetBranchSelected(false)
+                    SwingUtilities.invokeLater {
+                        if (pushResult.isSuccess) {
+                            branches.refreshRemoteBranchList()
+                            refreshTargetBranchSelected(false)
+                        }
+                        if (indicator.isCanceled) return@invokeLater
+                        val pushTip =
+                            if (pushResult.isSuccess) "${branchName}分支push成功" else "${branchName}分支push失败: ${pushResult.errMsg}"
+                        BalloonUtils.showBalloonCenter(project, rootPane, pushTip, 3500)
                     }
-                    if (indicator.isCanceled) return@invokeLater
-                    val pushTip =
-                        if (pushResult.isSuccess) "${branchName}分支push成功" else "${branchName}分支push失败: ${pushResult.errMsg}"
-                    BalloonUtils.showBalloonCenter(project, rootPane, pushTip, 3500)
-
-
                 }
             }
         }
