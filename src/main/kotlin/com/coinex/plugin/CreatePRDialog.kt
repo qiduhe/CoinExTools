@@ -369,6 +369,7 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
         }
 
         refreshSourceBranchNameCheck()
+        refreshSourceBranchPushCheck()
         refreshTargetBranchNameCheck()
 
         refreshTargetBranchPushLabel()
