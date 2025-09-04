@@ -307,7 +307,7 @@ object GitUtils {
             return false
         }
         val basePath = project.basePath ?: return false
-        val result = runGitCommand(basePath, false, null, "merge-base", "--is-ancestor", target, source)
+        val result = runGitCommand(basePath, false, null, "merge-base", "--is-ancestor", "origin/$target", source)
         return result.exitValue != 0
     }
 
