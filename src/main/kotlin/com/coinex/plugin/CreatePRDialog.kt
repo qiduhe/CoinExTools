@@ -45,6 +45,7 @@ private const val CLICK_REBASE_COMMIT_RESOLVE = 0x33
 private const val MAIN_FONT_SIZE = 14.5F
 private const val TIP_FONT_SIZE = 13.5F
 private const val ROW_WIDTH = 500
+private const val FETCH_BUTTON_SIZE = 80
 private const val ROW_MIN_HEIGHT = 35
 private const val LINE_SPACING = 5
 private const val MAX_ROW_COUNT = 20
@@ -52,6 +53,7 @@ private const val COLOR_TIP = 0x8E8E8E
 
 class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
     private val projectUrlField = JBTextField()
+    private val fetchButton = JButton("Fetch")
     private val selectSourceBranchCB = ComboBox<String>()
     private val selectTargetBranchCB = ComboBox<String>()
 
@@ -125,7 +127,7 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
             font = font.deriveFont(MAIN_FONT_SIZE)
             emptyText.text = "请输入项目地址"
             setText(ConfigManager.getProjectUrl(project))
-            preferredSize = Dimension(ROW_WIDTH, ROW_MIN_HEIGHT)
+            preferredSize = Dimension(ROW_WIDTH - FETCH_BUTTON_SIZE, ROW_MIN_HEIGHT)
             projectUrlField.isOpaque = true
             isEditable = false
             cursor = Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
@@ -139,6 +141,34 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
                     dialog.show()
                 }
             })
+        }
+
+        fetchButton.apply {
+            font = font.deriveFont(MAIN_FONT_SIZE)
+            preferredSize = Dimension(FETCH_BUTTON_SIZE, ROW_MIN_HEIGHT)
+            addActionListener { 
+                runProgressTask("更新远程分支") { indicator ->
+                    indicator.text = "正在更新所有远程分支..."
+                    
+                    // 使用 WarpUtils 确保网络连接
+                    WarpUtils.runInWarp {
+                        val result = GitUtils.fetchAll(project)
+                        
+                        SwingUtilities.invokeLater {
+                            if (result.isSuccess) {
+                                // 刷新分支列表
+                                branches.refreshRemoteBranchList()
+                                refreshSourceBranchSelected(false)
+                                refreshTargetBranchSelected(false)
+                                
+                                BalloonUtils.showBalloonCenter(project, rootPane, "✅ 远程分支更新成功", 3000)
+                            } else {
+                                BalloonUtils.showBalloonCenter(project, rootPane, "❌ 更新远程分支失败: ${result.errMsg}", 5000)
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         selectSourceBranchCB.apply {
@@ -201,8 +231,15 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
             add(component, BorderLayout.CENTER)
         }
 
+        fun createProjectUrlPanel(): JPanel = JPanel().apply {
+            layout = BorderLayout(5, 0)
+            add(projectUrlField, BorderLayout.CENTER)
+            add(fetchButton, BorderLayout.EAST)
+            preferredSize = Dimension(ROW_WIDTH, ROW_MIN_HEIGHT)
+        }
+
         val formBuilder = FormBuilder.createFormBuilder()
-            .addLabeledComponent(JBLabel().createTitle("项目地址："), wrapperComponent(projectUrlField), 1, false)
+            .addLabeledComponent(JBLabel().createTitle("项目地址："), wrapperComponent(createProjectUrlPanel()), 1, false)
             .addComponent(JPanel().createRowSpacing())
             .addComponent(JPanel().createRowSpacing())
             .addLabeledComponent(JBLabel().createTitle("源分支："), wrapperComponent(selectSourceBranchCB), 1, false)

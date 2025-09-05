@@ -369,5 +369,12 @@ object GitUtils {
         return rebaseHead.exists() && rebaseHead.readText().trim().isNotEmpty()
     }
 
+    /**
+     * 从远程仓库获取所有分支的最新信息
+     */
+    fun fetchAll(project: Project): GitCommandResult {
+        val basePath = project.basePath ?: return GitCommandResult.fail()
+        return runGitCommand(basePath, "fetch", "--all", "--prune")
+    }
 
 }
