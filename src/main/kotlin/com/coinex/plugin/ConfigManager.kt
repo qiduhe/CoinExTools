@@ -12,6 +12,7 @@ object ConfigManager {
     private const val PROJECT_PR_URL = "${PACKAGE_ID}.pr_base_url"
     private const val KEY_LAST_TARGET_BRANCH = "${PACKAGE_ID}.last_tar_branch"
     private const val KEY_FEATURE_BASE_BRANCH = "${PACKAGE_ID}.feature_base_branch"
+    private const val KEY_PERSONAL_BRANCH_SUFFIX = "${PACKAGE_ID}.personal_branch_suffix"
 
     private fun getCommonUniqueKey(project: Project, key: String): String {
         val suffix = project.basePath ?: project.name
@@ -81,5 +82,13 @@ object ConfigManager {
         }
         val key = getCommonUniqueKey(project, KEY_FEATURE_BASE_BRANCH)
         PropertiesComponent.getInstance().setValue(key, branch)
+    }
+
+    fun getPersonalBranchSuffix(): String? {
+        return PropertiesComponent.getInstance().getValue(KEY_PERSONAL_BRANCH_SUFFIX)
+    }
+
+    fun setPersonalBranchSuffix(suffix: String?) {
+        PropertiesComponent.getInstance().setValue(KEY_PERSONAL_BRANCH_SUFFIX, suffix ?: "")
     }
 }

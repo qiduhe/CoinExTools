@@ -27,13 +27,21 @@ object ProjectCodeHelper {
     }
 
     fun getFeatureBranchByFeat(branch: String?): String {
-        branch ?: return ""
-        var feature = branch
+        var feature = branch ?: ""
         if (feature.startsWith("feat/")) {
             feature = feature.replace("feat/", "feature-")
-            if (feature.endsWith("_hqd")) {
-                feature = feature.replace("_hqd", "")
+            val suffixArray = arrayOf("hqd", ConfigManager.getPersonalBranchSuffix())
+            suffixArray.forEach { suffix ->
+                if (!suffix.isNullOrEmpty()) {
+                    if (feature.endsWith("_$suffix")) {
+                        feature = feature.replace("_$suffix", "")
+                    }
+                    if (feature.endsWith("-$suffix")) {
+                        feature = feature.replace("-$suffix", "")
+                    }
+                }
             }
+
         }
         feature = feature
             .replace("/", "-")

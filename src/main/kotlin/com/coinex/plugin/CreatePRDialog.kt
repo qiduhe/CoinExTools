@@ -21,6 +21,8 @@ import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
+import java.awt.event.WindowAdapter
+import java.awt.event.WindowEvent
 import java.io.File
 import javax.swing.*
 import javax.swing.plaf.basic.ComboPopup
@@ -100,6 +102,17 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
     private val selectTargetBranch: String
         get() = selectTargetBranchCB.selectedItem?.toString()?.trim { it <= ' ' } ?: ""
 
+    val windowListener = object : WindowAdapter() {
+        override fun windowActivated(e: WindowEvent?) {
+            // Dialog 被激活（获得焦点或切回窗口）
+            refreshSourceBranchSelected(false)
+            refreshTargetBranchSelected(false)
+        }
+
+        override fun windowDeactivated(e: WindowEvent?) {
+            // Dialog 被取消激活
+        }
+    }
 
     init {
         init()
@@ -107,18 +120,7 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
         setCancelButtonText("取消")
         setOKButtonText("创建")
         isResizable = false
-
-        window.addWindowListener(object : java.awt.event.WindowAdapter() {
-            override fun windowActivated(e: java.awt.event.WindowEvent?) {
-                // Dialog 被激活（获得焦点或切回窗口）
-                refreshSourceBranchSelected(false)
-                refreshTargetBranchSelected(false)
-            }
-
-            override fun windowDeactivated(e: java.awt.event.WindowEvent?) {
-                // Dialog 被取消激活
-            }
-        })
+        window.addWindowListener(windowListener)
     }
 
 
@@ -138,6 +140,12 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
                         Log.d { "项目地址输入变化: $projectUrl" }
                         projectUrlField.text = projectUrl
                     }
+                    dialog.dialogClosedListener = { isConfigChanged ->
+                        if (isConfigChanged) {
+                            close(0)
+                            CreatePRDialog(project).show()
+                        }
+                    }
                     dialog.show()
                 }
             })
@@ -152,6 +160,7 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
                     
                     // 使用 WarpUtils 确保网络连接
                     WarpUtils.runInWarp {
+                        if (indicator.isCanceled) return@runInWarp
                         val result = GitUtils.fetchAll(project)
                         
                         SwingUtilities.invokeLater {
@@ -906,6 +915,11 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
         }
         BrowserUtils.openInBrowser(prUrl)
         super.doOKAction()
+    }
+
+    override fun dispose() {
+        super.dispose()
+        window.removeWindowListener(windowListener)
     }
 
     private class Branches(private val project: Project) {

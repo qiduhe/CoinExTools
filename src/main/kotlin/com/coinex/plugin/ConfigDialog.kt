@@ -22,6 +22,10 @@ class ConfigDialog(private val project: Project) : DialogWrapper(project) {
         preferredSize = Dimension(50, preferredSize.height)
         minimumSize = Dimension(50, minimumSize.height)
     }
+    private val personalBranchSuffixField = JBTextField().apply {
+        preferredSize = Dimension(420, preferredSize.height)
+        minimumSize = Dimension(420, minimumSize.height)
+    }
     private val tipLabel = JBLabel("修改后自动保存").apply {
         horizontalAlignment = SwingConstants.CENTER
         foreground = Color.GRAY
@@ -29,6 +33,10 @@ class ConfigDialog(private val project: Project) : DialogWrapper(project) {
     }
 
     var projectUrlChangedListener: ((String) -> Unit)? = null
+    var dialogClosedListener: ((isConfigChanged: Boolean) -> Unit)? = null
+
+    var isProjectUrlEdited = false
+    var isBranchSuffixEdited = false
 
     init {
         init()
@@ -45,9 +53,23 @@ class ConfigDialog(private val project: Project) : DialogWrapper(project) {
             override fun removeUpdate(e: DocumentEvent?) = save()
             override fun changedUpdate(e: DocumentEvent?) = save()
             private fun save() {
+                isProjectUrlEdited = true
                 val newProjectUrl = projectUrlField.text.trim()
                 ConfigManager.setProjectUrl(project, newProjectUrl)
                 projectUrlChangedListener?.invoke(newProjectUrl)
+            }
+        })
+
+        personalBranchSuffixField.emptyText.text = "请输入个人分支后缀，如：hqd"
+        personalBranchSuffixField.text = ConfigManager.getPersonalBranchSuffix() ?: ""
+        personalBranchSuffixField.document.addDocumentListener(object : DocumentListener {
+            override fun insertUpdate(e: DocumentEvent?) = save()
+            override fun removeUpdate(e: DocumentEvent?) = save()
+            override fun changedUpdate(e: DocumentEvent?) = save()
+            private fun save() {
+                isBranchSuffixEdited = true
+                val newSuffix = personalBranchSuffixField.text.trim()
+                ConfigManager.setPersonalBranchSuffix(newSuffix)
             }
         })
 
@@ -68,6 +90,8 @@ class ConfigDialog(private val project: Project) : DialogWrapper(project) {
 
         val formPanel = FormBuilder.createFormBuilder()
             .addLabeledComponent(JBLabel("项目地址: "), inputPanel, 1, false)
+            .addComponent(JPanel().apply { preferredSize = Dimension(0, 8) })
+            .addLabeledComponent(JBLabel("个人分支后缀: "), personalBranchSuffixField, 1, false)
             .panel
         formPanel.preferredSize = Dimension(formPanel.preferredSize.width, formPanel.preferredSize.height)
 
@@ -85,5 +109,11 @@ class ConfigDialog(private val project: Project) : DialogWrapper(project) {
     }
 
     override fun createActions(): Array<Action> = emptyArray()
+
+    override fun dispose() {
+        super.dispose()
+        val isConfigChanged = isProjectUrlEdited || isBranchSuffixEdited
+        dialogClosedListener?.invoke(isConfigChanged)
+    }
 }
 
