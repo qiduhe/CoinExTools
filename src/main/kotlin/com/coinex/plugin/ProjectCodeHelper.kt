@@ -49,9 +49,45 @@ object ProjectCodeHelper {
         return feature
     }
 
+    fun getDevBranchByFix(branch: String?): String {
+        var feature = branch ?: ""
+        if (feature.startsWith("fix/")) {
+            feature = feature.replace("fix/", "dev-")
+            val suffixArray = arrayOf("hqd", ConfigManager.getPersonalBranchSuffix())
+            suffixArray.forEach { suffix ->
+                if (!suffix.isNullOrEmpty()) {
+                    if (feature.endsWith("_$suffix")) {
+                        feature = feature.replace("_$suffix", "")
+                    }
+                    if (feature.endsWith("-$suffix")) {
+                        feature = feature.replace("-$suffix", "")
+                    }
+                }
+            }
+
+        }
+        feature = feature
+            .replace("/", "-")
+            .replace("_", "-")
+        return feature
+    }
+
+    fun getMainBranch(): String {
+        return "main"
+    }
+
     fun isFeatBranch(branch: String): Boolean {
         return branch.startsWith("feat/")
     }
+
+    fun isFixBranch(branch: String): Boolean {
+        return branch.startsWith("fix/")
+    }
+
+    fun isDevBranch(branch: String): Boolean {
+        return branch.startsWith("dev-")
+    }
+
 
     fun isFeatureBranch(branch: String): Boolean {
         return branch.startsWith("feature-")

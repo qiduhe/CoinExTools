@@ -377,4 +377,13 @@ object GitUtils {
         return runGitCommand(basePath, "fetch", "--all", "--prune")
     }
 
+    /**
+     * 删除本地分支
+     */
+    fun deleteLocalBranch(project: Project, branch: String, force: Boolean = false): GitCommandResult {
+        val basePath = project.basePath ?: return GitCommandResult.fail()
+        if (branch.isBlank()) return GitCommandResult.fail()
+        val param = if (force) "-D" else "-d"
+        return runGitCommand(basePath, "branch", param, branch)
+    }
 }

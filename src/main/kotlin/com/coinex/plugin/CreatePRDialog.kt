@@ -12,17 +12,11 @@ import com.intellij.openapi.ui.ValidationInfo
 import com.intellij.openapi.vcs.changes.ChangeListManager
 import com.intellij.openapi.vcs.changes.VcsDirtyScopeManager
 import com.intellij.ui.CollectionComboBoxModel
-import com.intellij.ui.ColorUtil
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.FormBuilder
 import java.awt.*
-import java.awt.event.KeyAdapter
-import java.awt.event.KeyEvent
-import java.awt.event.MouseAdapter
-import java.awt.event.MouseEvent
-import java.awt.event.WindowAdapter
-import java.awt.event.WindowEvent
+import java.awt.event.*
 import java.io.File
 import javax.swing.*
 import javax.swing.plaf.basic.ComboPopup
@@ -37,8 +31,6 @@ private const val CLICK_OPEN_VERSiON_CTRL = 0x03
 
 private const val CLICK_PUSH_SRC_BRANCH = 0x11
 
-private const val CLICK_PUSH_TAR_BRANCH = 0x21
-
 private const val CLICK_REBASE_SRC_ON_TARGET = 0x31
 private const val CLICK_REBASE_HANDLE_CONFLICT = 0x32
 private const val CLICK_REBASE_COMMIT_RESOLVE = 0x33
@@ -48,6 +40,7 @@ private const val MAIN_FONT_SIZE = 14.5F
 private const val TIP_FONT_SIZE = 13.5F
 private const val ROW_WIDTH = 500
 private const val FETCH_BUTTON_SIZE = 80
+private const val CREATE_FEATURE_BUTTON_SIZE = 120
 private const val ROW_MIN_HEIGHT = 35
 private const val LINE_SPACING = 5
 private const val MAX_ROW_COUNT = 20
@@ -56,6 +49,7 @@ private const val COLOR_TIP = 0x8E8E8E
 class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
     private val projectUrlField = JBTextField()
     private val fetchButton = JButton("Fetch")
+    private val createFeatureButton = JButton("创建Feature")
     private val selectSourceBranchCB = ComboBox<String>()
     private val selectTargetBranchCB = ComboBox<String>()
 
@@ -64,34 +58,12 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
     private val srcBranchRebaseLabel = JBLabel().createTipLabel()
     private val srcBranchCodeAnalysisLabel = JBLabel().createTipLabel()
     private val srcBranchNameCheckLabel = JBLabel().createTipLabel()
-    private val tarBranchPushLabel = JBLabel().createTipLabel()
+
     private val targetBranchNameCheckLabel = JBLabel().createTipLabel()
 
     private val branches = Branches(project)
     private val currentBranch = GitUtils.getCurrentBranch(project)
     private val lastTargetBranch = ConfigManager.getLastTargetBranch(project)
-
-    private var featToFeatureMap = ObservableMap<String, String>(
-        onAdd = { feat, feature ->
-            branches.targetList.addIfNotExist(feature)
-            branches.targetList.sort()
-            refreshTargetBranchPushLabel()
-        },
-        onRemove = { feat, feature ->
-            branches.targetList.remove(feature)
-            branches.targetList.sort()
-            refreshTargetBranchPushLabel()
-        },
-        onUpdate = { feat, featureOld, featureNew ->
-            branches.targetList.remove(featureOld)
-            branches.targetList.addIfNotExist(featureNew)
-            branches.targetList.sort()
-            refreshTargetBranchPushLabel()
-            if (selectTargetBranch == featureOld) {
-                selectTargetBranchCB.selectedItem = featureNew
-            }
-        }
-    )
 
     private val projectUrl: String?
         get() = projectUrlField.text?.trim { it <= ' ' }
@@ -154,25 +126,31 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
         fetchButton.apply {
             font = font.deriveFont(MAIN_FONT_SIZE)
             preferredSize = Dimension(FETCH_BUTTON_SIZE, ROW_MIN_HEIGHT)
-            addActionListener { 
+            toolTipText = "更新远程分支代码"
+            addActionListener {
                 runProgressTask("更新远程分支") { indicator ->
                     indicator.text = "正在更新所有远程分支..."
-                    
+
                     // 使用 WarpUtils 确保网络连接
                     WarpUtils.runInWarp {
                         if (indicator.isCanceled) return@runInWarp
                         val result = GitUtils.fetchAll(project)
-                        
+
                         SwingUtilities.invokeLater {
                             if (result.isSuccess) {
                                 // 刷新分支列表
                                 branches.refreshRemoteBranchList()
                                 refreshSourceBranchSelected(false)
                                 refreshTargetBranchSelected(false)
-                                
+
                                 BalloonUtils.showBalloonCenter(project, rootPane, "✅ 远程分支更新成功", 3000)
                             } else {
-                                BalloonUtils.showBalloonCenter(project, rootPane, "❌ 更新远程分支失败: ${result.errMsg}", 5000)
+                                BalloonUtils.showBalloonCenter(
+                                    project,
+                                    rootPane,
+                                    "❌ 更新远程分支失败: ${result.errMsg}",
+                                    5000
+                                )
                             }
                         }
                     }
@@ -186,6 +164,22 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
             model = CollectionComboBoxModel(branches.sourceList)
             setRenderer(BranchDisplayRenderer(model))
             addActionListener { refreshSourceBranchSelected(false) }
+        }
+        createFeatureButton.apply {
+            font = font.deriveFont(MAIN_FONT_SIZE)
+            preferredSize = Dimension(CREATE_FEATURE_BUTTON_SIZE, ROW_MIN_HEIGHT)
+            toolTipText = "创建feat分支对应的feature分支"
+            addActionListener {
+                val dialog = CreateFeatureBranchDialog(project, branches.remoteList, selectSourceBranch)
+                dialog.onDialogClosedListener = { isCreateSuccess ->
+                    if (isCreateSuccess) {
+                        branches.refreshLocalBranchList()
+                        branches.refreshRemoteBranchList()
+                        initTargetBranchSelect()
+                    }
+                }
+                dialog.show()
+            }
         }
         initSourceBranchSelect()
 
@@ -225,14 +219,6 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
         })
 
         targetBranchNameCheckLabel.foreground = tipColor
-        tarBranchPushLabel.foreground = tipColor
-        tarBranchPushLabel.addMouseListener(object : MouseAdapter() {
-            override fun mouseClicked(e: MouseEvent?) {
-                e ?: return
-                onTargetBranchPushClick(e)
-            }
-        })
-
 
         fun wrapperComponent(component: Component): JPanel = JPanel().apply {
             preferredSize = Dimension(component.preferredSize.width, component.preferredSize.height)
@@ -247,11 +233,28 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
             preferredSize = Dimension(ROW_WIDTH, ROW_MIN_HEIGHT)
         }
 
+        fun createSourceBranchPanel(): JPanel = JPanel().apply {
+            layout = BorderLayout(5, 0)
+            add(selectSourceBranchCB, BorderLayout.CENTER)
+            add(createFeatureButton, BorderLayout.EAST)
+            preferredSize = Dimension(ROW_WIDTH, ROW_MIN_HEIGHT)
+        }
+
         val formBuilder = FormBuilder.createFormBuilder()
-            .addLabeledComponent(JBLabel().createTitle("项目地址："), wrapperComponent(createProjectUrlPanel()), 1, false)
+            .addLabeledComponent(
+                JBLabel().createTitle("项目地址："),
+                wrapperComponent(createProjectUrlPanel()),
+                1,
+                false
+            )
             .addComponent(JPanel().createRowSpacing())
             .addComponent(JPanel().createRowSpacing())
-            .addLabeledComponent(JBLabel().createTitle("源分支："), wrapperComponent(selectSourceBranchCB), 1, false)
+            .addLabeledComponent(
+                JBLabel().createTitle("源分支："),
+                wrapperComponent(createSourceBranchPanel()),
+                1,
+                false
+            )
             .addComponentToRightColumn(srcBranchRebaseLabel, 1)
             .addComponentToRightColumn(srcBranchPushLabel, 1)
             .addComponentToRightColumn(srcBranchCodeAnalysisLabel, 1)
@@ -259,15 +262,19 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
             .addComponent(JPanel().createRowSpacing())
             .addLabeledComponent(JBLabel().createTitle("目标分支："), wrapperComponent(selectTargetBranchCB), 1, false)
             .addComponentToRightColumn(targetBranchNameCheckLabel, 1)
-            .addComponentToRightColumn(tarBranchPushLabel, 1)
             .addComponentFillVertically(JPanel(), 0)
         val dialogPanel = formBuilder.panel
 
         return dialogPanel
     }
 
-    private fun isBranchHasLocalBranch(branch: String?): Boolean {
-        return !branch.isNullOrEmpty() && branches.localList.contains(branch)
+    private fun refreshCreateFeatureVisible() {
+        if (ProjectCodeHelper.isFeatBranch(selectSourceBranch)) {
+            createFeatureButton.isVisible =
+                !branches.targetList.contains(ProjectCodeHelper.getFeatureBranchByFeat(selectSourceBranch))
+        } else {
+            createFeatureButton.isVisible = false
+        }
     }
 
     private fun isBranchHasRemoteBranch(branch: String?): Boolean {
@@ -281,16 +288,10 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
             selectSourceBranchCB.selectedItem = branches.sourceList.firstOrNull()
         }
 
-        val sourceBranch = selectTargetBranch
-        if (ProjectCodeHelper.isFeatBranch(sourceBranch)) {
-            featToFeatureMap.put(sourceBranch, ProjectCodeHelper.getFeatureBranchByFeat(sourceBranch))
-        }
-
         refreshSourceBranchSelected(true)
     }
 
     private fun refreshSourceBranchSelected(fromInit: Boolean) {
-        val sourceBranch = selectSourceBranch
         refreshSourceBranchPushCheck()
         refreshSourceBranchCodeAnalysis()
 
@@ -298,11 +299,7 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
         refreshTargetBranchNameCheck()
 
         refreshSourceBranchRebaseCheck()
-
-        // 如果该feat分支还没有feature分支，则添加
-        if (ProjectCodeHelper.isFeatBranch(sourceBranch) && !featToFeatureMap.containsKey(sourceBranch)) {
-            featToFeatureMap.put(sourceBranch, ProjectCodeHelper.getFeatureBranchByFeat(sourceBranch))
-        }
+        refreshCreateFeatureVisible()
     }
 
     private fun refreshSourceBranchRebaseCheck() {
@@ -396,15 +393,37 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
     }
 
     private fun initTargetBranchSelect() {
-        if (ProjectCodeHelper.isFeatBranch(selectSourceBranch)) {
-            selectTargetBranchCB.selectedItem = ProjectCodeHelper.getFeatureBranchByFeat(currentBranch)
-        } else if (!lastTargetBranch.isNullOrEmpty() && branches.targetList.contains(lastTargetBranch)) {
-            selectTargetBranchCB.selectedItem = lastTargetBranch
-        } else {
-            selectTargetBranchCB.selectedItem = branches.targetList.firstOrNull()
+        selectTargetBranchCB.selectedItem = getDefaultSelectTargetBranch()
+        refreshTargetBranchSelected(true)
+    }
+
+    private fun getDefaultSelectTargetBranch(): String? {
+        val sourceBranch = selectSourceBranch
+        if (ProjectCodeHelper.isFeatBranch(sourceBranch)) {
+            val featureBranch = ProjectCodeHelper.getFeatureBranchByFeat(currentBranch)
+            if (branches.remoteList.contains(featureBranch)) {
+                return featureBranch
+            }
         }
 
-        refreshTargetBranchSelected(true)
+        if (ProjectCodeHelper.isFixBranch(sourceBranch)) {
+            val devBranch = ProjectCodeHelper.getDevBranchByFix(currentBranch)
+            if (branches.remoteList.contains(devBranch)) {
+                return devBranch
+            }
+        }
+        if (ProjectCodeHelper.isDevBranch(sourceBranch)) {
+            val mainBranch = ProjectCodeHelper.getMainBranch()
+            if (branches.remoteList.contains(mainBranch)) {
+                return mainBranch
+            }
+        }
+
+        if (!lastTargetBranch.isNullOrEmpty() && branches.targetList.contains(lastTargetBranch)) {
+            return lastTargetBranch
+        }
+
+        return branches.targetList.firstOrNull()
     }
 
     private fun refreshTargetBranchSelected(fromInit: Boolean) {
@@ -417,8 +436,6 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
         refreshSourceBranchNameCheck()
         refreshSourceBranchPushCheck()
         refreshTargetBranchNameCheck()
-
-        refreshTargetBranchPushLabel()
     }
 
     private fun refreshTargetBranchNameCheck() {
@@ -436,44 +453,6 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
 
         refreshSourceBranchRebaseCheck()
     }
-
-    private fun refreshTargetBranchPushLabel() {
-        val targetBranch = selectTargetBranch
-        tarBranchPushLabel.clickType = CLICK_DISABLE
-        tarBranchPushLabel.text = ""
-        if (ProjectCodeHelper.isFeatureBranch(targetBranch)) {
-            val featureBranch = targetBranch
-            if (!isBranchHasRemoteBranch(featureBranch)) {
-
-                if (!isBranchHasLocalBranch(featureBranch)) {
-                    tarBranchPushLabel.clickType = CLICK_PUSH_TAR_BRANCH
-                    // 没有远程分支，也没有本地分支
-                    val highlightColor = "#66CC88"
-                    val labelColor = ColorUtil.toHtmlColor(tarBranchPushLabel.foreground)
-
-                    fun addHighlightColor(text: String): String = "<span style='color:$highlightColor;'>$text</span>"
-                    fun addNormalColor(text: String): String = "<span style='color:$labelColor;'>$text</span>"
-
-                    val baseBranch = ConfigManager.getFeatureBaseBranch(project)
-                    tarBranchPushLabel.text = StringBuilder()
-                        .append("<html>")
-                        .append(addNormalColor("❌"))
-                        .append(addHighlightColor(" $baseBranch "))
-                        .append(addNormalColor("→"))
-                        .append(addHighlightColor(" $featureBranch "))
-                        .append(addNormalColor("，点此创建并push"))
-                        .append("</html>")
-                        .toString()
-                } else {
-                    // 没有远程分支，但有本地分支
-                    tarBranchPushLabel.clickType = CLICK_PUSH_TAR_BRANCH
-                    tarBranchPushLabel.text = "❌ 该分支还没push，点此去push"
-                }
-            }
-        }
-        tarBranchPushLabel.setVisibleIfTextValid()
-    }
-
 
     private fun onCodeAnalysisClick() {
         if (!srcBranchCodeAnalysisLabel.isClickable()) {
@@ -742,111 +721,6 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
                     val pushTip =
                         if (pushResult.isSuccess) "${sourceBranch}分支push成功" else "${sourceBranch}分支push失败: ${pushResult.errMsg}"
                     BalloonUtils.showBalloonCenter(project, rootPane, pushTip, 3500)
-                }
-            }
-        }
-    }
-
-    private fun onTargetBranchPushClick(e: MouseEvent) {
-        if (!tarBranchPushLabel.isClickable()) {
-            return
-        }
-
-        // 点击修改迁出分支
-        val base = ConfigManager.getFeatureBaseBranch(project)
-        val baseRect = Utils.getTextRangeInLabel(tarBranchPushLabel, " $base ")
-        if (Utils.isInRectangle(baseRect, e.x, e.y)) {
-            val newBase = Messages.showInputDialog(
-                project,
-                "",
-                "修改迁出分支",
-                null,
-                base,
-                null
-            )?.trim()
-            if (!newBase.isNullOrEmpty()) {
-                ConfigManager.setFeatureBaseBranch(project, newBase)
-                refreshTargetBranchPushLabel()
-            }
-            return
-        }
-
-        // 点击修改feature分支
-        val sourceBranch = selectSourceBranch
-        val feature = featToFeatureMap.get(sourceBranch)
-        val featureRect = Utils.getTextRangeInLabel(tarBranchPushLabel, " $feature ")
-        if (Utils.isInRectangle(featureRect, e.x, e.y)) {
-            val newFeature = Messages.showInputDialog(
-                project,
-                "",
-                "修改feature分支",
-                null,
-                feature,
-                null
-            )?.trim()
-            if (!newFeature.isNullOrEmpty()) {
-                featToFeatureMap.put(sourceBranch, newFeature)
-            }
-            return
-        }
-
-        if (tarBranchPushLabel.clickType == CLICK_PUSH_TAR_BRANCH) {
-            // 点击推送分支
-            val branchName = selectTargetBranch
-            val isBranchExistLocal = GitUtils.isLocalBranchExists(this.project, branchName)
-            val title = if (isBranchExistLocal) "确定push分支" else "确定创建并push分支"
-            val yes = Utils.showConfirmDialog(project, title, branchName)
-            if (!yes) {
-                return
-            }
-
-            runProgressTask("Push分支") { indicator ->
-                indicator.text = "正在推送分支 $branchName ..."
-                if (indicator.isCanceled) return@runProgressTask
-
-                if (!isBranchExistLocal) {
-                    indicator.text = "正从 ${ConfigManager.getFeatureBaseBranch(project)} 分支创建 $branchName ..."
-                    val result = GitUtils.createLocalBranchIfNotExists(
-                        this.project, branchName, ConfigManager.getFeatureBaseBranch(project)
-                    )
-                    if (result.isSuccess) {
-                        SwingUtilities.invokeLater {
-                            branches.refreshLocalBranchList()
-                            refreshTargetBranchSelected(false)
-                        }
-                    }
-                    if (indicator.isCanceled) return@runProgressTask
-                    if (!result.isSuccess) {
-                        SwingUtilities.invokeLater {
-                            val errMsg = result.output
-                            val msg =
-                                if (errMsg.isEmpty()) "${branchName} 分支创建失败"
-                                else "${branchName} 分支创建失败: ${errMsg}"
-                            BalloonUtils.showBalloonCenter(project, rootPane, msg, 2000)
-                        }
-                        return@runProgressTask
-                    }
-
-                    if (indicator.isCanceled) return@runProgressTask
-                }
-
-                indicator.text = "正在push $branchName ..."
-                // push网络需要开启warp
-                WarpUtils.runInWarp {
-                    val pushResult = GitUtils.pushBranchWithCancel(this.project, branchName, indicator)
-                    Log.d { "${branchName} Push结果：$pushResult" }
-                    if (indicator.isCanceled) return@runInWarp
-
-                    SwingUtilities.invokeLater {
-                        if (pushResult.isSuccess) {
-                            branches.refreshRemoteBranchList()
-                            refreshTargetBranchSelected(false)
-                        }
-                        if (indicator.isCanceled) return@invokeLater
-                        val pushTip =
-                            if (pushResult.isSuccess) "${branchName}分支push成功" else "${branchName}分支push失败: ${pushResult.errMsg}"
-                        BalloonUtils.showBalloonCenter(project, rootPane, pushTip, 3500)
-                    }
                 }
             }
         }

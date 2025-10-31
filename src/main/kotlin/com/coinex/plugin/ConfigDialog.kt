@@ -62,6 +62,7 @@ class ConfigDialog(private val project: Project) : DialogWrapper(project) {
 
         personalBranchSuffixField.emptyText.text = "请输入个人分支后缀，如：hqd"
         personalBranchSuffixField.text = ConfigManager.getPersonalBranchSuffix() ?: ""
+        personalBranchSuffixField.toolTipText = "若为hqd，创建feature分支时，feat/ex_function_hqd → feature-ex-function"
         personalBranchSuffixField.document.addDocumentListener(object : DocumentListener {
             override fun insertUpdate(e: DocumentEvent?) = save()
             override fun removeUpdate(e: DocumentEvent?) = save()
