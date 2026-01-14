@@ -400,14 +400,24 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
     private fun getDefaultSelectTargetBranch(): String? {
         val sourceBranch = selectSourceBranch
         if (ProjectCodeHelper.isFeatBranch(sourceBranch)) {
-            val featureBranch = ProjectCodeHelper.getFeatureBranchByFeat(currentBranch)
+            var featureBranch = ProjectCodeHelper.getFeatureBranchByFeat(sourceBranch)
             if (branches.remoteList.contains(featureBranch)) {
                 return featureBranch
             }
         }
 
         if (ProjectCodeHelper.isFixBranch(sourceBranch)) {
-            val devBranch = ProjectCodeHelper.getDevBranchByFix(currentBranch)
+            val featureBranch = ProjectCodeHelper.getFeatureBranchByFix(sourceBranch)
+            if (branches.remoteList.contains(featureBranch)) {
+                return featureBranch
+            }
+
+            var devBranch = ProjectCodeHelper.getDevBranchByFix(sourceBranch)
+            if (branches.remoteList.contains(devBranch)) {
+                return devBranch
+            }
+
+            devBranch = ProjectCodeHelper.getDevBranchByFixFullName(sourceBranch)
             if (branches.remoteList.contains(devBranch)) {
                 return devBranch
             }

@@ -30,47 +30,64 @@ object ProjectCodeHelper {
         var feature = branch ?: ""
         if (feature.startsWith("feat/")) {
             feature = feature.replace("feat/", "feature-")
-            val suffixArray = arrayOf("hqd", ConfigManager.getPersonalBranchSuffix())
-            suffixArray.forEach { suffix ->
-                if (!suffix.isNullOrEmpty()) {
-                    if (feature.endsWith("_$suffix")) {
-                        feature = feature.replace("_$suffix", "")
-                    }
-                    if (feature.endsWith("-$suffix")) {
-                        feature = feature.replace("-$suffix", "")
-                    }
-                }
-            }
-
+            feature = replacePersonalBranchSuffix(feature)
         }
-        feature = feature
-            .replace("/", "-")
-            .replace("_", "-")
         return feature
     }
 
+    /**
+     * @param branch fix/4.4.0-hqd -> dev-4.0.0
+     */
     fun getDevBranchByFix(branch: String?): String {
+        var dev = branch ?: ""
+        if (dev.startsWith("fix/")) {
+            dev = dev.replace("fix/", "dev-")
+            dev = replacePersonalBranchSuffix(dev)
+        }
+        return dev
+    }
+
+    /**
+     * @param branch fix/login-hqd -> feature-login
+     */
+    fun getFeatureBranchByFix(branch: String?): String {
         var feature = branch ?: ""
         if (feature.startsWith("fix/")) {
-            feature = feature.replace("fix/", "dev-")
-            val suffixArray = arrayOf("hqd", ConfigManager.getPersonalBranchSuffix())
-            suffixArray.forEach { suffix ->
-                if (!suffix.isNullOrEmpty()) {
-                    if (feature.endsWith("_$suffix")) {
-                        feature = feature.replace("_$suffix", "")
-                    }
-                    if (feature.endsWith("-$suffix")) {
-                        feature = feature.replace("-$suffix", "")
-                    }
-                }
-            }
-
+            feature = feature.replace("fix/", "feature-")
+            feature = replacePersonalBranchSuffix(feature)
         }
-        feature = feature
-            .replace("/", "-")
-            .replace("_", "-")
         return feature
     }
+
+    /**
+     * @param branch fix/dev-4.4.0-hqd -> dev-4.0.0
+     */
+    fun getDevBranchByFixFullName(branch: String?): String {
+        var dev = branch ?: ""
+        if (dev.startsWith("fix/")) {
+            dev = dev.replace("fix/", "")
+            dev = replacePersonalBranchSuffix(dev)
+        }
+        return dev
+    }
+
+    private fun replacePersonalBranchSuffix(rawBranch: String): String {
+        var branch = rawBranch
+        val suffixArray = arrayOf("hqd", ConfigManager.getPersonalBranchSuffix())
+        suffixArray.forEach { suffix ->
+            if (!suffix.isNullOrEmpty()) {
+                if (branch.endsWith("_$suffix")) {
+                    branch = branch.replace("_$suffix", "")
+                }
+                if (branch.endsWith("-$suffix")) {
+                    branch = branch.replace("-$suffix", "")
+                }
+            }
+        }
+
+        return branch.replace("/", "-").replace("_", "-")
+    }
+
 
     fun getMainBranch(): String {
         return "main"
@@ -87,7 +104,6 @@ object ProjectCodeHelper {
     fun isDevBranch(branch: String): Boolean {
         return branch.startsWith("dev-")
     }
-
 
     fun isFeatureBranch(branch: String): Boolean {
         return branch.startsWith("feature-")

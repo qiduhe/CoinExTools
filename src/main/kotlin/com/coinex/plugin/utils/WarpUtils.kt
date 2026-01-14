@@ -37,10 +37,11 @@ object WarpUtils {
 
     fun runInWarp(callback: () -> Unit) {
         if (!isWarpConnected()) {
-            val closeWarpLater = switchWarpStatus(true)
-            var count = 5
+            var closeWarpLater: Boolean
+            var count = 16
             do {
-                Thread.sleep(500)
+                closeWarpLater = switchWarpStatus(true)
+                Thread.sleep(1000)
                 count--
             } while (count > 0 && !isWarpConnected())
 
