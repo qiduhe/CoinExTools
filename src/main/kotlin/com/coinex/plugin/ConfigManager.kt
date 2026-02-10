@@ -13,6 +13,8 @@ object ConfigManager {
     private const val KEY_LAST_TARGET_BRANCH = "${PACKAGE_ID}.last_tar_branch"
     private const val KEY_FEATURE_BASE_BRANCH = "${PACKAGE_ID}.feature_base_branch"
     private const val KEY_PERSONAL_BRANCH_SUFFIX = "${PACKAGE_ID}.personal_branch_suffix"
+    private const val KEY_GH_PATH = "${PACKAGE_ID}.gh_path"
+    private const val KEY_PR_TITLE = "${PACKAGE_ID}.pr_title"
 
     private fun getCommonUniqueKey(project: Project, key: String): String {
         val suffix = project.basePath ?: project.name
@@ -90,5 +92,27 @@ object ConfigManager {
 
     fun setPersonalBranchSuffix(suffix: String?) {
         PropertiesComponent.getInstance().setValue(KEY_PERSONAL_BRANCH_SUFFIX, suffix ?: "")
+    }
+
+    fun getGHPath(): String {
+        val path = PropertiesComponent.getInstance().getValue(KEY_GH_PATH)
+        if (path.isNullOrEmpty()) {
+            return GHUtils.DEFAULT_GH_PATH
+        }
+        return path
+    }
+
+    fun setGHPath(suffix: String?) {
+        PropertiesComponent.getInstance().setValue(KEY_GH_PATH, suffix ?: "")
+    }
+
+    fun getPRTitle(project: Project): String? {
+        val key = getCommonUniqueKey(project, KEY_PR_TITLE)
+        return PropertiesComponent.getInstance().getValue(key)
+    }
+
+    fun setPRTitle(project: Project, title: String?) {
+        val key = getCommonUniqueKey(project, KEY_PR_TITLE)
+        PropertiesComponent.getInstance().setValue(key, title)
     }
 }

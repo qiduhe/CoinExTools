@@ -1,56 +1,86 @@
 package com.coinex.plugin.utils
 
+import com.intellij.openapi.project.Project
+import java.io.File
+
 object WarpUtils {
 
-    fun isWarpConnected(): Boolean {
+    private const val WARP_PATH = "/usr/local/bin/warp-cli"
+
+    enum class WarpStatus {
+        CONNECTED,
+        DISCONNECTED,
+        CONNECTING,
+        UNKNOWN
+    }
+
+    private fun getWarpCliPath(): String? {
+        if (!FileUtils.isExist(WARP_PATH)) {
+            return null
+        }
+        return WARP_PATH
+    }
+
+    private fun getWarpStatus(): WarpStatus {
         return try {
-            val processBuilder = ProcessBuilder("warp-cli", "status")
+            val process = ProcessBuilder(getWarpCliPath(), "status")
                 .redirectErrorStream(true)
+                .start()
 
-            val process = processBuilder.start()
-
-            val result = process.inputStream.bufferedReader().use { reader ->
-                reader.readText()
-            }.trim()
-
+            val output = process.inputStream.bufferedReader().readText()
             process.waitFor()
-            result.contains("Connected")
+
+            when {
+                output.contains(": Connected") -> WarpStatus.CONNECTED
+                output.contains(": Connecting") -> WarpStatus.CONNECTING
+                output.contains(": Disconnected") -> WarpStatus.DISCONNECTED
+                else -> WarpStatus.UNKNOWN
+            }
         } catch (e: Exception) {
-            Log.e { "Git command failed: ${e.message}" }
-            false
+            Log.e { "warp status failed: ${e.message}" }
+            WarpStatus.UNKNOWN
         }
     }
 
-    fun switchWarpStatus(connect: Boolean): Boolean {
+    private fun requestWarp(project: Project, connect: Boolean): Boolean {
         return try {
-            val processBuilder = ProcessBuilder("warp-cli", if (connect) "connect" else "disconnect")
+            val process = ProcessBuilder(getWarpCliPath(), if (connect) "connect" else "disconnect")
+                .directory(File(project.basePath ?: ""))
                 .redirectErrorStream(true)
-
-            val process = processBuilder.start()
+                .start()
             process.waitFor()
             process.exitValue() == 0
         } catch (e: Exception) {
-            Log.e { "Git command failed: ${e.message}" }
             false
         }
     }
 
-    fun runInWarp(callback: () -> Unit) {
-        if (!isWarpConnected()) {
-            var closeWarpLater: Boolean
-            var count = 16
-            do {
-                closeWarpLater = switchWarpStatus(true)
-                Thread.sleep(1000)
-                count--
-            } while (count > 0 && !isWarpConnected())
-
-            callback.invoke()
-            if (closeWarpLater) {
-                switchWarpStatus(false)
-            }
+    fun runInWarp(project: Project, callback: () -> Unit) {
+        if (getWarpCliPath().isNullOrEmpty()) {
+            callback()
             return
         }
-        callback.invoke()
+        val initialStatus = getWarpStatus()
+        val needRestore = initialStatus != WarpStatus.CONNECTED
+
+        if (needRestore) {
+            requestWarp(project, true)
+
+            val start = System.currentTimeMillis()
+            while (System.currentTimeMillis() - start < 15_000) {
+                if (getWarpStatus() == WarpStatus.CONNECTED) {
+                    break
+                }
+                Thread.sleep(500)
+            }
+        }
+
+        try {
+            callback()
+        } finally {
+            if (needRestore) {
+                requestWarp(project, false)
+            }
+        }
     }
 }

@@ -386,4 +386,21 @@ object GitUtils {
         val param = if (force) "-D" else "-d"
         return runGitCommand(basePath, "branch", param, branch)
     }
+
+
+    fun addToGitignoreIfNeeded(project: Project, filePath: String) {
+        val projectRoot = File(project.basePath ?: return)
+        val gitignoreFile = File(projectRoot, ".gitignore")
+        if (!gitignoreFile.exists()) {
+            return
+        }
+        try {
+            val lines = gitignoreFile.readLines()
+            if (lines.none { it.trim() == filePath }) {
+                gitignoreFile.appendText("\n$filePath\n")
+            }
+        } catch (e: Exception) {
+            Log.d { "追加 $filePath 到 .gitignore 失败: ${e.message}" }
+        }
+    }
 }

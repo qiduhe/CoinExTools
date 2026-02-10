@@ -15,10 +15,14 @@ object CodeAnalysisScriptHelper {
     }
 
     fun installScript(project: Project): Boolean {
-        return ScriptInstaller.installScript(
+        val success = ScriptInstaller.installScript(
             project.basePath + File.separator + CODE_ANALYSIS_SCRIPT_DIR,
             CODE_ANALYSIS_SCRIPT_NAME
         )
+        if (success) {
+            GitUtils.addToGitignoreIfNeeded(project, getCodeAnalysisScriptPath())
+        }
+        return success
     }
 
     fun isBranchHadRunCodeAnalysis(project: Project, branch: String?): Boolean {

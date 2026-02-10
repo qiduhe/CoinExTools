@@ -22,6 +22,10 @@ class ConfigDialog(private val project: Project) : DialogWrapper(project) {
         preferredSize = Dimension(50, preferredSize.height)
         minimumSize = Dimension(50, minimumSize.height)
     }
+    private val ghPathField = JBTextField().apply {
+        preferredSize = Dimension(420, preferredSize.height)
+        minimumSize = Dimension(420, minimumSize.height)
+    }
     private val personalBranchSuffixField = JBTextField().apply {
         preferredSize = Dimension(420, preferredSize.height)
         minimumSize = Dimension(420, minimumSize.height)
@@ -60,6 +64,18 @@ class ConfigDialog(private val project: Project) : DialogWrapper(project) {
             }
         })
 
+        ghPathField.emptyText.text = "请输入gh路径，如：/opt/homebrew/bin/gh"
+        ghPathField.text = ConfigManager.getGHPath()
+        ghPathField.document.addDocumentListener(object : DocumentListener {
+            override fun insertUpdate(e: DocumentEvent?) = save()
+            override fun removeUpdate(e: DocumentEvent?) = save()
+            override fun changedUpdate(e: DocumentEvent?) = save()
+            private fun save() {
+                val path = ghPathField.text.trim()
+                ConfigManager.setGHPath(path)
+            }
+        })
+
         personalBranchSuffixField.emptyText.text = "请输入个人分支后缀，如：hqd"
         personalBranchSuffixField.text = ConfigManager.getPersonalBranchSuffix() ?: ""
         personalBranchSuffixField.toolTipText = "若为hqd，创建feature分支时，feat/ex_function_hqd → feature-ex-function"
@@ -91,6 +107,8 @@ class ConfigDialog(private val project: Project) : DialogWrapper(project) {
 
         val formPanel = FormBuilder.createFormBuilder()
             .addLabeledComponent(JBLabel("项目地址: "), inputPanel, 1, false)
+            .addComponent(JPanel().apply { preferredSize = Dimension(0, 8) })
+            .addLabeledComponent(JBLabel("Github Cli: "), ghPathField, 1, false)
             .addComponent(JPanel().apply { preferredSize = Dimension(0, 8) })
             .addLabeledComponent(JBLabel("个人分支后缀: "), personalBranchSuffixField, 1, false)
             .panel

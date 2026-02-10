@@ -1,6 +1,7 @@
 package com.coinex.plugin
 
 import com.coinex.plugin.utils.*
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
@@ -17,8 +18,9 @@ import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.FormBuilder
 import java.awt.*
 import java.awt.event.*
-import java.io.File
 import javax.swing.*
+import javax.swing.event.DocumentEvent
+import javax.swing.event.DocumentListener
 import javax.swing.plaf.basic.ComboPopup
 
 
@@ -52,6 +54,7 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
     private val createFeatureButton = JButton("创建Feature")
     private val selectSourceBranchCB = ComboBox<String>()
     private val selectTargetBranchCB = ComboBox<String>()
+    private val prTitleField = JBTextField()
 
     private val labelClickTypeMap = mutableMapOf<JBLabel, Int>()
     private val srcBranchPushLabel = JBLabel().createTipLabel()
@@ -73,6 +76,9 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
 
     private val selectTargetBranch: String
         get() = selectTargetBranchCB.selectedItem?.toString()?.trim { it <= ' ' } ?: ""
+
+    private val prTitle: String
+        get() = prTitleField.text?.trim { it <= ' ' } ?: ""
 
     val windowListener = object : WindowAdapter() {
         override fun windowActivated(e: WindowEvent?) {
@@ -128,11 +134,11 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
             preferredSize = Dimension(FETCH_BUTTON_SIZE, ROW_MIN_HEIGHT)
             toolTipText = "更新远程分支代码"
             addActionListener {
-                runProgressTask("更新远程分支") { indicator ->
+                runProgressTask("更新远程分支", run = { indicator ->
                     indicator.text = "正在更新所有远程分支..."
 
                     // 使用 WarpUtils 确保网络连接
-                    WarpUtils.runInWarp {
+                    WarpUtils.runInWarp(project) {
                         if (indicator.isCanceled) return@runInWarp
                         val result = GitUtils.fetchAll(project)
 
@@ -154,7 +160,7 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
                             }
                         }
                     }
-                }
+                })
             }
         }
 
@@ -192,6 +198,22 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
             addActionListener { refreshTargetBranchSelected(false) }
         }
         initTargetBranchSelect()
+
+        prTitleField.apply {
+            text = ConfigManager.getPRTitle(project)
+            emptyText.text = "请输入PR标题"
+            font = font.deriveFont(MAIN_FONT_SIZE)
+            preferredSize = Dimension(ROW_WIDTH, ROW_MIN_HEIGHT)
+            prTitleField.document.addDocumentListener(object : DocumentListener {
+                override fun insertUpdate(e: DocumentEvent?) = save()
+                override fun removeUpdate(e: DocumentEvent?) = save()
+                override fun changedUpdate(e: DocumentEvent?) = save()
+                private fun save() {
+                    val prTitle = prTitleField.text.trim()
+                    ConfigManager.setPRTitle(project, prTitle)
+                }
+            })
+        }
 
         val tipColor = Color(COLOR_TIP)
         srcBranchRebaseLabel.foreground = tipColor
@@ -262,11 +284,16 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
             .addComponent(JPanel().createRowSpacing())
             .addLabeledComponent(JBLabel().createTitle("目标分支："), wrapperComponent(selectTargetBranchCB), 1, false)
             .addComponentToRightColumn(targetBranchNameCheckLabel, 1)
+            .addComponent(JPanel().createRowSpacing())
+            .addLabeledComponent(JBLabel().createTitle("PR标题："), wrapperComponent(prTitleField), 1, false)
             .addComponentFillVertically(JPanel(), 0)
         val dialogPanel = formBuilder.panel
 
         return dialogPanel
     }
+
+    // 会在 show() 后自动调用
+    override fun getPreferredFocusedComponent(): JComponent? = prTitleField
 
     private fun refreshCreateFeatureVisible() {
         if (ProjectCodeHelper.isFeatBranch(selectSourceBranch)) {
@@ -353,8 +380,7 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
                 srcBranchCodeAnalysisLabel.text = "✅该分支已完成代码检测，再次检测"
                 srcBranchCodeAnalysisLabel.clickType = CLICK_CODE_ANALYSIS
             } else if (currentBranch == selectSourceBranch) {
-                srcBranchCodeAnalysisLabel.text =
-                    "⚠\uFE0F 该分支未进行代码检测，点此去执行"
+                srcBranchCodeAnalysisLabel.text = "⚠\uFE0F 该分支未进行代码检测，点此执行"
                 srcBranchCodeAnalysisLabel.clickType = CLICK_CODE_ANALYSIS
             } else {
                 srcBranchCodeAnalysisLabel.text = "⚠\uFE0F 该分支未进行代码检测，点击去切换分支"
@@ -383,9 +409,9 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
         val unPushedCount = GitUtils.getUnPushedCommitCount(project, hasRemote, source)
         val statusTip = StringBuilder()
         if (!hasRemote) {
-            statusTip.append("❌ 该分支还没push，点此去push")
+            statusTip.append("❌ 该分支还没push，点此push")
         } else if (unPushedCount > 0) {
-            statusTip.append("❌ 该分支有未push的commit，点此去push")
+            statusTip.append("❌ 该分支有未push的commit，点此push")
         }
         srcBranchPushLabel.clickType = CLICK_PUSH_SRC_BRANCH
         srcBranchPushLabel.text = statusTip.toString()
@@ -529,7 +555,7 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
             if (!yes) {
                 return
             }
-            runProgressTask("push 分支...") { indicator ->
+            runProgressTask("push 分支...", run = { indicator ->
                 indicator.text = "正在 commit rebase冲突..."
                 val result = GitUtils.rebaseContinue(project)
                 if (!result.isSuccess) {
@@ -559,7 +585,7 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
                     branches.refreshLocalBranchList()
                     refreshSourceBranchSelected(false)
                 }
-            }
+            })
             return
         }
 
@@ -585,7 +611,7 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
     }
 
     private fun doRebaseSourceOntoTargetBranch(project: Project, source: String, originTarget: String) {
-        runProgressTask("rebase 分支") { indicator ->
+        runProgressTask("rebase 分支", run = { indicator ->
             indicator.text = "正在 rebase $originTarget ..."
             try {
                 val result = GitUtils.rebaseCurrentOnToTargetBranch(project, originTarget)
@@ -621,7 +647,7 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
                     Messages.showErrorDialog(project, "rebase 失败: ${e.message}", "rebase 错误")
                 }
             }
-        }
+        })
     }
 
     private fun jumpConflictResolve(refresh: Boolean = false) {
@@ -668,12 +694,12 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
     }
 
     private fun pushSourceBranch(sourceBranch: String) {
-        runProgressTask("Push分支") { indicator ->
+        runProgressTask("Push分支", run = { indicator ->
             if (indicator.isCanceled) return@runProgressTask
 
             indicator.text = "正在push $sourceBranch ..."
             // push网络需要开启warp
-            WarpUtils.runInWarp {
+            WarpUtils.runInWarp(project) {
                 var pushResult = GitUtils.pushBranchWithCancel(project, sourceBranch, indicator)
                 if (!pushResult.isSuccess && pushResult.isPushRejected) {
                     var userChoice = ConflictChoice.NONE
@@ -733,13 +759,24 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
                     BalloonUtils.showBalloonCenter(project, rootPane, pushTip, 3500)
                 }
             }
-        }
+        })
     }
 
-    private fun runProgressTask(title: String, run: (ProgressIndicator) -> Unit) {
+    private fun <Result> runProgressTask(
+        title: String,
+        run: (ProgressIndicator) -> Result,
+        onSuccess: ((Result?) -> Unit)? = null
+    ) {
         ProgressManager.getInstance().run(object : Task.Modal(project, title, true) {
+            private var result: Result? = null
+
             override fun run(indicator: ProgressIndicator) {
-                run.invoke(indicator)
+                result = run.invoke(indicator)
+            }
+
+            override fun onSuccess() {
+                super.onSuccess()
+                onSuccess?.invoke(result)
             }
         })
     }
@@ -751,7 +788,6 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
                 val success = CodeAnalysisScriptHelper.installScript(project)
                 if (success) {
                     val scriptPath = CodeAnalysisScriptHelper.getCodeAnalysisScriptPath()
-                    addScriptToGitignoreIfNeeded(project, scriptPath)
                     BalloonUtils.showBalloonCenter(project, rootPane, "✅ 脚本已安装到 $scriptPath")
                 } else {
                     BalloonUtils.showBalloonCenter(project, rootPane, "❌ 脚本安装失败，请检查项目权限")
@@ -759,22 +795,6 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
                 callback.invoke()
             }
         })
-    }
-
-    private fun addScriptToGitignoreIfNeeded(project: Project, scriptPath: String) {
-        val projectRoot = File(project.basePath ?: return)
-        val gitignoreFile = File(projectRoot, ".gitignore")
-        if (!gitignoreFile.exists()) {
-            return
-        }
-        try {
-            val lines = gitignoreFile.readLines()
-            if (lines.none { it.trim() == scriptPath }) {
-                gitignoreFile.appendText("\n$scriptPath\n")
-            }
-        } catch (e: Exception) {
-            Log.d { "追加 codeAnalysis.sh 到 .gitignore 失败: ${e.message}" }
-        }
     }
 
     override fun doValidate(): ValidationInfo? {
@@ -787,18 +807,50 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
         if (selectTargetBranch.isEmpty()) {
             return ValidationInfo("请输入目标分支名", selectTargetBranchCB)
         }
+        if (prTitle.isEmpty()) {
+            return ValidationInfo("请输入PR标题", prTitleField)
+        }
         return null
     }
 
     override fun doOKAction() {
-        // push成功后再执行创建PR逻辑
-        val prUrl = "${projectUrl}/compare/${selectTargetBranch}...${selectSourceBranch}"
-        if (!BrowserUtils.isValidUrl(prUrl)) {
-            Messages.showErrorDialog(project, "链接错误，请检测 [项目地址] 是否正确，并可以跳转", "")
+        ApplicationManager.getApplication().invokeLater {
+            createPR()
+        }
+    }
+
+    private fun createPR() {
+        val projectPath = project.basePath ?: return
+        val title = prTitle
+        runProgressTask(
+            "创建PR",
+            run = { indicator ->
+                indicator.text = "创建中..."
+                GHUtils.createPRRequest(projectPath, title, selectSourceBranch, selectTargetBranch)
+            },
+            onSuccess = { result ->
+                result ?: return@runProgressTask
+                GHUtils.extractPrUrl(result.output)
+                if (!result.isSuccess && !result.isAlreadyExists) {
+                    SwingUtilities.invokeLater {
+                        Messages.showErrorDialog(project, "创建失败: \n${result.output}", "")
+                    }
+                    return@runProgressTask
+                }
+                val prUrl = GHUtils.extractPrUrl(result.output)
+                SwingUtilities.invokeLater {
+                    super.doOKAction()
+                    showPRResultDialog(prUrl, title)
+                }
+            }
+        )
+    }
+
+    private fun showPRResultDialog(prUrl: String?, title: String) {
+        if (prUrl.isNullOrEmpty()) {
             return
         }
-        BrowserUtils.openInBrowser(prUrl)
-        super.doOKAction()
+        PRResultDialog(project, prUrl, title).show()
     }
 
     override fun dispose() {

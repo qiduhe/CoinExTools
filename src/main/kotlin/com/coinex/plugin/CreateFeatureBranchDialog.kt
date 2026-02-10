@@ -133,7 +133,7 @@ class CreateFeatureBranchDialog(
             }
 
             indicator.text = "正在 push $featureBranch ..."
-            WarpUtils.runInWarp {
+            WarpUtils.runInWarp(project) {
                 val pushResult = GitUtils.pushBranchWithCancel(project, featureBranch, indicator)
                 SwingUtilities.invokeLater {
                     if (pushResult.isSuccess) {

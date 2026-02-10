@@ -11,12 +11,12 @@ object ProjectCodeHelper {
 
     fun repoUrlToProjectUrl(rawRepoUrl: String?): String {
         val projectUrl = GitUtils.removeGitHubToken(rawRepoUrl)
-        return when  {
+        return when {
             projectUrl.contains(COINEX_EXCHANGE_REPO_IDENTITY) -> {
                 COINEX_EXCHANGE_PROJECT_BASE_URL
             }
 
-            projectUrl.contains(COINEX_WALLET_REPO_IDENTITY)  -> {
+            projectUrl.contains(COINEX_WALLET_REPO_IDENTITY) -> {
                 COINEX_WALLET_PROJECT_URL
             }
 

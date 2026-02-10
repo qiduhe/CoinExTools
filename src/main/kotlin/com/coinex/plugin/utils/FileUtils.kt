@@ -16,4 +16,9 @@ object FileUtils {
         }
         return file.exists()
     }
+
+    @JvmStatic
+    fun isExist(path: String?): Boolean {
+        return !path.isNullOrEmpty() || File(path).exists()
+    }
 }
