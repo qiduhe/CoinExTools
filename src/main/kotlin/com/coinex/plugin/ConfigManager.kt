@@ -14,7 +14,13 @@ object ConfigManager {
     private const val KEY_FEATURE_BASE_BRANCH = "${PACKAGE_ID}.feature_base_branch"
     private const val KEY_PERSONAL_BRANCH_SUFFIX = "${PACKAGE_ID}.personal_branch_suffix"
     private const val KEY_GH_PATH = "${PACKAGE_ID}.gh_path"
-    private const val KEY_PR_TITLE = "${PACKAGE_ID}.pr_title"
+    private const val KEY_PR_TITLE_HISTORY = "${PACKAGE_ID}.pr_title_history"
+    private const val MAX_COUNT_PR_TITLE_HISTORY = 5
+    private const val DELIMITER_PR_TITLE_HISTORY = "\u001E"
+    private const val KEY_SLACK_REVIEW_CHANNEL_ID = "${PACKAGE_ID}.slack_review_channel_id"
+
+    const val DEFAULT_SLACK_TEAM_ID = "T027EKHKMBK"
+    const val DEFAULT_SLACK_REVIEW_CHANNEL_ID = "C05FTRXTE3H"
 
     private fun getCommonUniqueKey(project: Project, key: String): String {
         val suffix = project.basePath ?: project.name
@@ -106,13 +112,39 @@ object ConfigManager {
         PropertiesComponent.getInstance().setValue(KEY_GH_PATH, suffix ?: "")
     }
 
-    fun getPRTitle(project: Project): String? {
-        val key = getCommonUniqueKey(project, KEY_PR_TITLE)
-        return PropertiesComponent.getInstance().getValue(key)
+    fun getPRTitleHistory(project: Project): List<String> {
+        val key = getCommonUniqueKey(project, KEY_PR_TITLE_HISTORY)
+        val raw = PropertiesComponent.getInstance().getValue(key) ?: return emptyList()
+        return raw.split(DELIMITER_PR_TITLE_HISTORY).take(MAX_COUNT_PR_TITLE_HISTORY)
     }
 
-    fun setPRTitle(project: Project, title: String?) {
-        val key = getCommonUniqueKey(project, KEY_PR_TITLE)
-        PropertiesComponent.getInstance().setValue(key, title)
+    fun addPRTitleToHistory(project: Project, title: String?) {
+        if (title.isNullOrBlank()) return
+        val key = getCommonUniqueKey(project, KEY_PR_TITLE_HISTORY)
+        val current = getPRTitleHistory(project).filter { it != title }
+        val newList = listOf(title) + current
+        val value = newList.take(MAX_COUNT_PR_TITLE_HISTORY).joinToString(DELIMITER_PR_TITLE_HISTORY)
+        PropertiesComponent.getInstance().setValue(key, value)
+    }
+
+    fun getSlackTeamId(): String {
+        return DEFAULT_SLACK_TEAM_ID
+    }
+
+    fun getSlackHttpUrl(): String {
+        return "https://app.slack.com/client/" + getSlackTeamId()
+    }
+
+    fun getSlackReviewChannelId(project: Project): String {
+        val key = getCommonUniqueKey(project, KEY_SLACK_REVIEW_CHANNEL_ID)
+        return PropertiesComponent.getInstance().getValue(key)
+            .ifNullOrEmpty {
+                DEFAULT_SLACK_REVIEW_CHANNEL_ID
+            }
+    }
+
+    fun setSlackReviewChannelId(project: Project, id: String?) {
+        val key = getCommonUniqueKey(project, KEY_SLACK_REVIEW_CHANNEL_ID)
+        PropertiesComponent.getInstance().setValue(key, id)
     }
 }

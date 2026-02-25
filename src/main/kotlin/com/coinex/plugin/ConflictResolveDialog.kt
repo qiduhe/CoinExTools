@@ -11,8 +11,6 @@ import java.awt.GridBagLayout
 import javax.swing.*
 
 
-enum class ConflictChoice { NONE, REBASE, FORCE_PUSH }
-
 private const val ROW_MIN_HEIGHT = 30
 private const val ROW_SPACE = 3
 
@@ -23,8 +21,8 @@ class ConflictResolveDialog(project: Project, private val sourceBranch: String) 
     private val rebaseButton = JButton("rebase分支")
     private val forcePushButton = JButton("强推分支")
 
-    private var choiceListener: ((ConflictChoice) -> Unit)? = null
-    private var choice = ConflictChoice.NONE
+    private var choiceListener: ((PushSourceType) -> Unit)? = null
+    private var choice = PushSourceType.NONE
 
     init {
         init()
@@ -33,7 +31,7 @@ class ConflictResolveDialog(project: Project, private val sourceBranch: String) 
         isResizable = false
     }
 
-    fun setConflictChoice(listener: ((ConflictChoice) -> Unit)?): ConflictResolveDialog {
+    fun setConflictChoice(listener: ((PushSourceType) -> Unit)?): ConflictResolveDialog {
         choiceListener = listener
         return this
     }
@@ -41,12 +39,12 @@ class ConflictResolveDialog(project: Project, private val sourceBranch: String) 
 
     override fun createCenterPanel(): JComponent {
         rebaseButton.addActionListener {
-            choice = ConflictChoice.REBASE
+            choice = PushSourceType.REBASE
             choiceListener?.invoke(choice)
             close(OK_EXIT_CODE)
         }
         forcePushButton.addActionListener {
-            choice = ConflictChoice.FORCE_PUSH
+            choice = PushSourceType.FORCE_PUSH
             choiceListener?.invoke(choice)
             close(OK_EXIT_CODE)
         }

@@ -10,6 +10,8 @@ import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.ValidationInfo
+import com.intellij.openapi.ui.popup.JBPopup
+import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.vcs.changes.ChangeListManager
 import com.intellij.openapi.vcs.changes.VcsDirtyScopeManager
 import com.intellij.ui.CollectionComboBoxModel
@@ -19,8 +21,6 @@ import com.intellij.util.ui.FormBuilder
 import java.awt.*
 import java.awt.event.*
 import javax.swing.*
-import javax.swing.event.DocumentEvent
-import javax.swing.event.DocumentListener
 import javax.swing.plaf.basic.ComboPopup
 
 
@@ -47,6 +47,7 @@ private const val ROW_MIN_HEIGHT = 35
 private const val LINE_SPACING = 5
 private const val MAX_ROW_COUNT = 20
 private const val COLOR_TIP = 0x8E8E8E
+private const val HISTORY_ROW_MIN_HEIGHT = 28
 
 class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
     private val projectUrlField = JBTextField()
@@ -80,7 +81,7 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
     private val prTitle: String
         get() = prTitleField.text?.trim { it <= ' ' } ?: ""
 
-    val windowListener = object : WindowAdapter() {
+    private val windowListener = object : WindowAdapter() {
         override fun windowActivated(e: WindowEvent?) {
             // Dialog 被激活（获得焦点或切回窗口）
             refreshSourceBranchSelected(false)
@@ -110,7 +111,7 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
             preferredSize = Dimension(ROW_WIDTH - FETCH_BUTTON_SIZE, ROW_MIN_HEIGHT)
             projectUrlField.isOpaque = true
             isEditable = false
-            cursor = Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+            cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
             addMouseListener(object : MouseAdapter() {
                 override fun mouseClicked(e: MouseEvent?) {
                     val dialog = ConfigDialog(project)
@@ -200,17 +201,16 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
         initTargetBranchSelect()
 
         prTitleField.apply {
-            text = ConfigManager.getPRTitle(project)
+            val commitMessage = GitUtils.getFirstCommitMessage(project, selectSourceBranch)
+            text = ProjectCodeHelper.getPrTitleFromCommit(commitMessage)
             emptyText.text = "请输入PR标题"
             font = font.deriveFont(MAIN_FONT_SIZE)
-            preferredSize = Dimension(ROW_WIDTH, ROW_MIN_HEIGHT)
-            prTitleField.document.addDocumentListener(object : DocumentListener {
-                override fun insertUpdate(e: DocumentEvent?) = save()
-                override fun removeUpdate(e: DocumentEvent?) = save()
-                override fun changedUpdate(e: DocumentEvent?) = save()
-                private fun save() {
-                    val prTitle = prTitleField.text.trim()
-                    ConfigManager.setPRTitle(project, prTitle)
+            preferredSize = Dimension(ROW_WIDTH - 65, ROW_MIN_HEIGHT)
+            addKeyListener(object : KeyAdapter() {
+                override fun keyPressed(e: KeyEvent?) {
+                    if (e?.keyCode == KeyEvent.VK_DOWN) {
+                        showPrTitleHistoryPopup()
+                    }
                 }
             })
         }
@@ -285,6 +285,7 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
             .addLabeledComponent(JBLabel().createTitle("目标分支："), wrapperComponent(selectTargetBranchCB), 1, false)
             .addComponentToRightColumn(targetBranchNameCheckLabel, 1)
             .addComponent(JPanel().createRowSpacing())
+            .addComponent(JPanel().createRowSpacing())
             .addLabeledComponent(JBLabel().createTitle("PR标题："), wrapperComponent(prTitleField), 1, false)
             .addComponentFillVertically(JPanel(), 0)
         val dialogPanel = formBuilder.panel
@@ -294,6 +295,74 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
 
     // 会在 show() 后自动调用
     override fun getPreferredFocusedComponent(): JComponent? = prTitleField
+
+    private fun showPrTitleHistoryPopup() {
+        val history = ConfigManager.getPRTitleHistory(project)
+        if (history.isEmpty()) return
+        val popupWidth = maxOf(prTitleField.width, prTitleField.preferredSize.width)
+        val itemHeight = HISTORY_ROW_MIN_HEIGHT
+        val listModel = DefaultListModel<String>().apply { history.forEach { addElement(it) } }
+        var popupRef: JBPopup? = null
+        val list = JList(listModel).apply {
+            font = font.deriveFont(MAIN_FONT_SIZE)
+            selectionMode = ListSelectionModel.SINGLE_SELECTION
+            selectedIndex = history.indexOf(prTitle).takeIf { it >= 0 } ?: 0
+            fixedCellHeight = itemHeight
+            cellRenderer = BorderListCellRenderer(BorderFactory.createEmptyBorder(0, 8, 0, 8))
+            addMouseMotionListener(object : MouseMotionAdapter() {
+                override fun mouseMoved(e: MouseEvent?) {
+                    e ?: return
+                    val idx = locationToIndex(e.point)
+                    if (idx >= 0) selectedIndex = idx
+                }
+            })
+            addKeyListener(object : KeyAdapter() {
+                override fun keyPressed(e: KeyEvent?) {
+                    when (e?.keyCode) {
+                        KeyEvent.VK_ENTER -> {
+                            val idx = selectedIndex
+                            if (idx in history.indices) {
+                                prTitleField.text = history[idx]
+                            }
+                            popupRef?.cancel()
+                        }
+
+                        KeyEvent.VK_ESCAPE -> {
+                            popupRef?.cancel()
+                        }
+                    }
+                }
+            })
+            addMouseListener(object : MouseAdapter() {
+                override fun mouseClicked(e: MouseEvent?) {
+                    if (e?.clickCount == 1) {
+                        val idx = locationToIndex(e.point)
+                        if (idx >= 0) {
+                            val item = history.getOrNull(idx)
+                            if (item != null) {
+                                prTitleField.text = item
+                            }
+                            popupRef?.cancel()
+                        }
+                    }
+                }
+            })
+        }
+        val scrollPane = JScrollPane(list).apply {
+            preferredSize = Dimension(popupWidth, history.size * itemHeight)
+            border = BorderFactory.createEmptyBorder()
+        }
+        popupRef = JBPopupFactory.getInstance()
+            .createComponentPopupBuilder(scrollPane, list)
+            .setRequestFocus(true)
+            .setCancelOnClickOutside(true)
+            .setCancelCallback { true }
+            .createPopup()
+        val location = prTitleField.locationOnScreen
+        val popupLocation = Point(location.x, location.y + prTitleField.height)
+
+        popupRef.showInScreenCoordinates(prTitleField, popupLocation)
+    }
 
     private fun refreshCreateFeatureVisible() {
         if (ProjectCodeHelper.isFeatBranch(selectSourceBranch)) {
@@ -693,30 +762,28 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
         }
     }
 
-    private fun pushSourceBranch(sourceBranch: String) {
+    private fun pushSourceBranch(sourceBranch: String, pushType: PushSourceType = PushSourceType.DEFAULT) {
+        if (pushType == PushSourceType.NONE) {
+            return
+        }
         runProgressTask("Push分支", run = { indicator ->
             if (indicator.isCanceled) return@runProgressTask
 
             indicator.text = "正在push $sourceBranch ..."
             // push网络需要开启warp
             WarpUtils.runInWarp(project) {
-                var pushResult = GitUtils.pushBranchWithCancel(project, sourceBranch, indicator)
-                if (!pushResult.isSuccess && pushResult.isPushRejected) {
-                    var userChoice = ConflictChoice.NONE
-                    SwingUtilities.invokeAndWait {
-                        ConflictResolveDialog(project, sourceBranch)
-                            .setConflictChoice {
-                                userChoice = it
-                            }
-                            .show()
+                var pushResult: GitCommandResult? = null
+                when (pushType) {
+                    PushSourceType.DEFAULT -> {
+                        pushResult = GitUtils.pushBranchWithCancel(project, sourceBranch, indicator)
                     }
 
-                    when (userChoice) {
-                        ConflictChoice.REBASE -> {
-                            indicator.text = "正在rebase远程分支..."
-                            val rebaseResult = GitUtils.rebaseCurrentOnToTargetBranch(project, "origin/$sourceBranch")
-                            val output = rebaseResult.output
-                            SwingUtilities.invokeLater {
+                    PushSourceType.REBASE -> {
+                        indicator.text = "正在rebase远程分支..."
+                        val rebaseResult = GitUtils.rebaseCurrentOnToTargetBranch(project, "origin/$sourceBranch")
+                        val output = rebaseResult.output
+                        SwingUtilities.invokeLater {
+                            Timer(200) {
                                 if (rebaseResult.isSuccess) {
                                     // rebase无冲突
                                     BalloonUtils.showBalloonCenter(
@@ -731,17 +798,37 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
                                 } else {
                                     Messages.showErrorDialog(project, "rebase 失败: $output", "rebase 错误")
                                 }
-                            }
+                            }.apply {
+                                isRepeats = false
+                            }.start()
                         }
-
-                        ConflictChoice.FORCE_PUSH -> {
-                            indicator.text = "正在force push $sourceBranch ..."
-                            pushResult = GitUtils.pushBranchForceWithLease(project, sourceBranch)
-                        }
-
-                        else -> {}
                     }
+
+                    PushSourceType.FORCE_PUSH -> {
+                        indicator.text = "正在force push $sourceBranch ..."
+                        pushResult = GitUtils.pushBranchForceWithLease(project, sourceBranch)
+                    }
+
+                    else -> {}
                 }
+
+                pushResult ?: return@runInWarp
+
+                if (!pushResult.isSuccess && pushResult.isPushRejected) {
+                    SwingUtilities.invokeLater {
+                        // 延迟一点显示，避免弹窗因焦点问题闪退
+                        Timer(200) {
+                            ConflictResolveDialog(project, sourceBranch)
+                                .setConflictChoice {
+                                    pushSourceBranch(sourceBranch, it)
+                                }.show()
+                        }.apply {
+                            isRepeats = false
+                        }.start()
+                    }
+                    return@runInWarp
+                }
+
                 if (pushResult.isSuccess) {
                     SwingUtilities.invokeLater {
                         branches.refreshRemoteBranchList()
@@ -832,13 +919,19 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
                 result ?: return@runProgressTask
                 GHUtils.extractPrUrl(result.output)
                 if (!result.isSuccess && !result.isAlreadyExists) {
+                    val msg = if (result.isNoCommitChanged) {
+                        "没有º代码变更"
+                    } else {
+                        result.output
+                    }
                     SwingUtilities.invokeLater {
-                        Messages.showErrorDialog(project, "创建失败: \n${result.output}", "")
+                        Messages.showErrorDialog(project, msg, "创建失败：")
                     }
                     return@runProgressTask
                 }
                 val prUrl = GHUtils.extractPrUrl(result.output)
                 SwingUtilities.invokeLater {
+                    ConfigManager.addPRTitleToHistory(project, title)
                     super.doOKAction()
                     showPRResultDialog(prUrl, title)
                 }
@@ -850,6 +943,7 @@ class CreatePRDialog(private val project: Project) : DialogWrapper(project) {
         if (prUrl.isNullOrEmpty()) {
             return
         }
+        close(OK_EXIT_CODE)
         PRResultDialog(project, prUrl, title).show()
     }
 

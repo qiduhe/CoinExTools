@@ -288,6 +288,19 @@ object GitUtils {
         return output.ifEmpty { null }
     }
 
+    /**
+     * @param branch 分支名，null 时使用当前 HEAD
+     * @return 第一个 commit 的 message 首行，无提交或失败时返回 null
+     */
+    fun getFirstCommitMessage(project: Project, branch: String? = null): String? {
+        val basePath = project.basePath ?: return null
+        val ref = branch?.takeIf { it.isNotBlank() } ?: "HEAD"
+        val result = runGitCommand(basePath, "log", "--reverse", "--format=%s", "-1", ref)
+        if (result.exitValue != 0) return null
+        val msg = result.output.trim()
+        return msg.ifEmpty { null }
+    }
+
     fun createLocalBranchIfNotExists(project: Project, branch: String, fromBranch: String): GitCommandResult {
         val basePath = project.basePath
         val localBranches = getLocalBranchList(project)

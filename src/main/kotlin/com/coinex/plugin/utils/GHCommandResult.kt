@@ -5,9 +5,11 @@ class GHCommandResult private constructor(val exitValue: Int, val output: String
         get() = exitValue == 0
 
     val isAlreadyExists: Boolean
-        get() {
-            return output.contains("already exists")
-        }
+        get() = output.contains("already exists")
+
+    val isNoCommitChanged: Boolean
+        get() = output.contains("No commits between")
+
     override fun toString(): String {
         return output
     }

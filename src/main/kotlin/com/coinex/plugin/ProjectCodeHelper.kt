@@ -119,4 +119,13 @@ object ProjectCodeHelper {
                 || name == "master"
     }
 
+    fun getPrTitleFromCommit(commit: String?): String? {
+        commit ?: return null
+        return commit.replace("fix:", "")
+            .replace("fix：", "")
+            .replace("feat:", "")
+            .replace("feat：", "")
+            .trim()
+    }
+
 }

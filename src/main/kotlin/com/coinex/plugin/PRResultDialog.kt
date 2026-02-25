@@ -2,6 +2,7 @@ package com.coinex.plugin
 
 import com.coinex.plugin.utils.BalloonUtils
 import com.coinex.plugin.utils.BrowserUtils
+import com.coinex.plugin.utils.MacAppJumpUtils
 import com.coinex.plugin.utils.Utils
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
@@ -10,6 +11,8 @@ import com.intellij.util.ui.UIUtil
 import java.awt.*
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
+import java.awt.event.WindowAdapter
+import java.awt.event.WindowEvent
 import javax.swing.Box
 import javax.swing.JComponent
 import javax.swing.JPanel
@@ -29,13 +32,20 @@ class PRResultDialog(
 
     private val prMessage get() = Triple(prUrl, "@频道", "$desc，麻烦PR")
 
+    private val windowListener = object : WindowAdapter() {
+        override fun windowOpened(e: WindowEvent?) {
+            super.windowOpened(e)
+            copyPrMessage()
+        }
+    }
+
     init {
         init()
         title = "Review"
         isModal = true
         isResizable = false
         setCancelButtonText("关闭")
-        setOKButtonText("已复制")
+        setOKButtonText("去Slack")
     }
 
     override fun createCenterPanel(): JComponent {
@@ -122,14 +132,18 @@ class PRResultDialog(
     }
 
     override fun doOKAction() {
-        copyPrMessage()
-        BalloonUtils.showBalloonCenter(project, "已复制")
+        MacAppJumpUtils.jumpSlack(project)
         super.doOKAction()
     }
 
     override fun show() {
-        copyPrMessage()
+        window.addWindowListener(windowListener)
         super.show()
+    }
+
+    override fun dispose() {
+        window.removeWindowListener(windowListener)
+        super.dispose()
     }
 
     private fun copyPrMessage() {
