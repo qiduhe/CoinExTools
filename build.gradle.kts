@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.coinex.plugin"
-version = "1.1"
+version = "2.0"
 
 repositories {
     mavenCentral()
